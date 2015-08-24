@@ -1,27 +1,32 @@
-var getED='getEmbeddedData';
-var setED='setEmbeddedData';
+
 var jq = $.noConflict();
 var htLocker=htLocker||{};
 
 var ht={};
+
+ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
+ht.getED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
+ht.addED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
+
 ht.engine = Qualtrics.SurveyEngine;
-ht.setED=Qualtrics.SurveyEngine.setEmbeddedData;
-ht.keyQs=[]; //this is for storing important question objects
+
+ht.keyQs=[]; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this array.
 ht.addKeyQ=function(q){
 	this.keyQs.push(q);
 }
 ht.getKeyQ=function(i){
-	if(i>=this.keyQs.length) return;
+	if(i>this.keyQs.length) return;
 	return this.keyQs[i-1];
 };
 ht.checkPageReady=function () {
 	if (!ht.engine.Page.__isReady) {
-		console.log('initing...');
+		console.log('page initing...');
 		return;
 	}
 	clearInterval(tmpInterval);
-	if (ht.pageReadyHandler) {
-		ht.pageReadyHandler();
+	console.log('page ready');
+	if (ht.handlePageReady) {
+		ht.handlePageReady();
 	} else {
 		console.log('no ready handler');
 	}
