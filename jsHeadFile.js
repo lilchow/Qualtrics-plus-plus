@@ -4,6 +4,13 @@ var htLocker=htLocker||{};
 
 var ht={};
 
+ht.saveToLocker=function(varName,varValue){
+	htLocker[varName]=varValue;
+}
+ht.getFromLocker=function(varName){
+	return htLocker[varName];
+}
+
 ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
 ht.getED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
 ht.addED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
