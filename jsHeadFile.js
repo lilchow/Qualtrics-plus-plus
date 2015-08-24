@@ -20,13 +20,13 @@ ht.getKeyQ=function(i){
 };
 ht.checkPageReady=function () {
 	if (!ht.engine.Page.__isReady) {
-		console.log('page initing...');
+		console.log('not ready yet');
 		return;
 	}
 	clearInterval(tmpInterval);
 	console.log('page ready');
-	if (ht.handlePageReady) {
-		ht.handlePageReady();
+	if (ht.onPageReady) {
+		ht.onPageReady();
 	} else {
 		console.log('no ready handler');
 	}
