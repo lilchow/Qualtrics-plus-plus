@@ -7,7 +7,7 @@ var ht={};
 ht.engine = Qualtrics.SurveyEngine;
 ht.setED=Qualtrics.SurveyEngine.setEmbeddedData;
 ht.keyQs=[]; //this is for storing important question objects
-ht.addToKeyQs=function(q){
+ht.addKeyQ=function(q){
 	this.keyQs.push(q);
 }
 ht.getKeyQ=function(i){
