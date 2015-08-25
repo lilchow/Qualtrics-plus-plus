@@ -39,7 +39,8 @@ ht.saveKeyQResp=function(tag){
 	var val;
 	
 	if(qType==='MC'){
-		val=choices.indexOf(q.getChoiceValue())+1;
+		val=qInfo.Choices[q.getChoiceValue()].Text
+		//val=choices.indexOf(q.getChoiceValue())+1;
 	}else if(qType==="TE" && qSelect==="SL"){
 		val=q.getChoiceValue();
 	}else if(qType==="TE" && qSelect==="FORM"){
@@ -48,7 +49,8 @@ ht.saveKeyQResp=function(tag){
 		});
 	}else if(qType==="Matrix"){
 		val=jq.map(choices,function(val){
-			return answers.indexOf(q.getChoiceValue(val))+1
+			return qInfo.Answers[q.getChoiceValue(val)].Display;
+			//return answers.indexOf(q.getChoiceValue(val))+1
 		});
 	}else if(qType==="Slider"){
 		val=jq.map(choices,function(val){
@@ -63,11 +65,11 @@ ht.saveKeyQResp=function(tag){
 };
 ht.checkPageReady=function () {
 	if (!ht.engine.Page.__isReady) {
-		console.log('not ready yet');
+		console.log('not ready');
 		return;
 	}
 	clearInterval(tmpInterval);
-	console.log('page ready');
+	console.log('ready');
 	if (ht.onPageReady) {
 		ht.onPageReady();
 	} else {
@@ -76,4 +78,4 @@ ht.checkPageReady=function () {
 };
 
 
-var tmpInterval = setInterval(ht.checkPageReady, 25);
+var tmpInterval = setInterval(ht.checkPageReady, 40);
