@@ -1,12 +1,12 @@
-
 var jq = $.noConflict();
-var ogFormStyle;
-jq(function(){
-    ogFormStyle=jq('form').css('visibility');
-	jq('form').css('visibility','hidden');
-});
-
+var origiFormStyle;
+var checkReadyInterval;
 var htLocker=htLocker||{};
+jq(function(){
+    origiFormStyle=jq('form').css('visibility');
+	jq('form').css('visibility','hidden');
+	console.log('hide form');
+});
 
 var ht={};
 
@@ -22,10 +22,10 @@ ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
 ht.getED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
 ht.addED=Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
 
-ht.engine = Qualtrics.SurveyEngine;
+ht.engine = Qualtrics.SurveyEngine;//barely needed
 
 ht.keyQs={}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
-ht.registerKeyQ=function(tag,q,logAsED){//logAsED is just a boolean flag to indicate whether to also save the value into an embedded data
+ht.registerKeyQ=function(tag,q){
 	this.keyQs[tag]=q;
 	var qId="#"+q.questionId;
 	var that=this;
@@ -33,16 +33,12 @@ ht.registerKeyQ=function(tag,q,logAsED){//logAsED is just a boolean flag to indi
 	jq(qId).mouseleave(function(){
 		qResp=that.saveKeyQResp(tag);
 	});
-	if(logAsED && qResp){
-		if(ht.getED) {
-			ht.setED(tag,qResp);
-		}else{
-			ht.addED(tag,qResp);
-		}
+	if(qResp){
+		ht.setED(tag,val);
 	}
 }
 
-ht.saveKeyQResp=function(tag){
+ht.saveKeyQResp=function(tag){//no need to call directly
 	var q=this.keyQs[tag]
 	var qInfo=q.getQuestionInfo();
 	var qType=qInfo.QuestionType;
@@ -53,7 +49,8 @@ ht.saveKeyQResp=function(tag){
 	var val;
 	
 	if(qType==='MC'){
-		val=qInfo.Choices[q.getChoiceValue()].Text
+		if (qInfo.Choices[q.getChoiceValue()]) val=qInfo.Choices[q.getChoiceValue()].Text;
+		else val="";
 		//val=choices.indexOf(q.getChoiceValue())+1;
 	}else if(qType==="TE" && qSelect==="SL"){
 		val=q.getChoiceValue();
@@ -63,7 +60,8 @@ ht.saveKeyQResp=function(tag){
 		});
 	}else if(qType==="Matrix"){
 		val=jq.map(choices,function(val){
-			return qInfo.Answers[q.getChoiceValue(val)].Display;
+			if(qInfo.Answers[q.getChoiceValue(val)]) return qInfo.Answers[q.getChoiceValue(val)].Display;
+			else return "";
 			//return answers.indexOf(q.getChoiceValue(val))+1
 		});
 	}else if(qType==="Slider"){
@@ -78,20 +76,39 @@ ht.saveKeyQResp=function(tag){
 	return val;
 	
 };
-ht.checkPageReady=function () {
+
+ht.protei={};//this is not exposed to the user
+ht.addProteus=function(id,selector,options){
+		this.protei[id]=options[ht.getED(selector)];
+	};
+ht.unleashProtei=function(){//this is called in reveal form. user doesn't need to worry about it
+	blocks.query(ht.protei);
+};
+
+ht.checkPageReady=function () {//no need to call directly
 	if (!ht.engine.Page.__isReady) {
 		console.log('not ready');
 		return;
 	}
-	clearInterval(tmpInterval);
-	console.log('ready');
-	jq('form').css('visibility',ogFormStyle);
+	clearInterval(checkReadyInterval);
+	console.log('production page ready');
+	ht.pageReadyHandler();
+};
+
+ht.pageReadyHandler=function(){//this is the internal page ready handler, user needs to define their own onPageReady handler
 	if (ht.onPageReady) {
 		ht.onPageReady();
 	} else {
-		console.log('no ready handler');
+		console.log('onPageReady function not found');
+		ht.revealForm();
 	}
 };
+ht.revealForm=function(){
+	this.unleashProtei();
+	jq('form').css('visibility',origiFormStyle);
+}
 
-
-var tmpInterval = setInterval(ht.checkPageReady, 40);
+if(ht.engine.hasOwnProperty("Page")){
+	checkReadyInterval = setInterval(ht.checkPageReady, 40);
+}
+ 
