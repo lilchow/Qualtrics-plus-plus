@@ -4,11 +4,12 @@ var htLocker=htLocker||{};
 
 var ht={};
 
-ht.saveToLocker=function(varName,varValue){
-	htLocker[varName]=varValue;
+ht.fetchFromLocker=function(tag){
+	return htLocker[tag];
 }
-ht.getFromLocker=function(varName){
-	return htLocker[varName];
+
+ht.saveToLocker=function(tag,val){
+	htLocker[tag]=val;
 }
 
 ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
@@ -17,26 +18,24 @@ ht.addED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
 
 ht.engine = Qualtrics.SurveyEngine;
 
-ht.keyQs=[]; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this array.
-ht.addKeyQ=function(q){
-	this.keyQs.push(q);
+ht.keyQs={}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
+ht.registerKeyQ=function(tag,q){
+	this.keyQs[tag]=q;
+	var qId="#"+q.questionId;
+	var that=this;
+	jq(qId).mouseleave(function(){
+		that.saveKeyQResp(tag);
+	});
 }
 
-//don't normally need to use it
-ht.getKeyQ=function(i){
-	if(i>this.keyQs.length) return null;
-	return this.keyQs[i-1];
-};
-
-ht.saveKeyQResp=function(i,varName){
-	if(!this.getKeyQ(i)) return;
-	var q=this.getKeyQ(i)
+ht.saveKeyQResp=function(tag){
+	var q=this.keyQs[tag]
 	var qInfo=q.getQuestionInfo();
 	var qType=qInfo.QuestionType;
 	var qSelect=qInfo.Selector;
 	var choices=q.getChoices();
 	var answers=q.getAnswers();
-	
+
 	var val;
 	
 	if(qType==='MC'){
@@ -55,10 +54,13 @@ ht.saveKeyQResp=function(i,varName){
 		val=jq.map(choices,function(val){
 			return Number(q.getChoiceValue(val));
 		});
+	}else{
+		return;
 	}
 		
-	this.saveToLocker(varName,val);
-}
+	this.saveToLocker(tag,val);
+	
+};
 ht.checkPageReady=function () {
 	if (!ht.engine.Page.__isReady) {
 		console.log('not ready yet');
@@ -72,5 +74,6 @@ ht.checkPageReady=function () {
 		console.log('no ready handler');
 	}
 };
+
 
 var tmpInterval = setInterval(ht.checkPageReady, 25);
