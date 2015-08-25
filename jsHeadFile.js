@@ -21,10 +21,44 @@ ht.keyQs=[]; //this is for storing important question objects, with the next two
 ht.addKeyQ=function(q){
 	this.keyQs.push(q);
 }
+
+//don't normally need to use it
 ht.getKeyQ=function(i){
-	if(i>this.keyQs.length) return;
+	if(i>this.keyQs.length) return null;
 	return this.keyQs[i-1];
 };
+
+ht.saveKeyQResp=function(i,varName){
+	if(!this.getKeyQ(i)) return;
+	var q=this.getKeyQ(i)
+	var qInfo=q.getQuestionInfo();
+	var qType=qInfo.QuestionType;
+	var qSelect=qInfo.Selector;
+	var choices=q.getChoices();
+	var answers=q.getAnswers();
+	
+	var val;
+	
+	if(qType==='MC'){
+		val=choices.indexOf(q.getChoiceValue())+1;
+	}else if(qType==="TE" && qSelect==="SL"){
+		val=q.getChoiceValue();
+	}else if(qType==="TE" && qSelect==="FORM"){
+		val=jq.map(choices,function(val){
+			return q.getTextValue(val);
+		});
+	}else if(qType==="Matrix"){
+		val=jq.map(choices,function(val){
+			return answers.indexOf(q.getChoiceValue(val))+1
+		});
+	}else if(qType==="Slider"){
+		val=jq.map(choices,function(val){
+			return Number(q.getChoiceValue(val));
+		});
+	}
+		
+	this.saveToLocker(varName,val);
+}
 ht.checkPageReady=function () {
 	if (!ht.engine.Page.__isReady) {
 		console.log('not ready yet');
