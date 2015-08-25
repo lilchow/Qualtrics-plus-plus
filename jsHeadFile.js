@@ -1,5 +1,11 @@
 
 var jq = $.noConflict();
+var ogFormStyle;
+jq(function(){
+    ogFormStyle=jq('form').css('visibility');
+	jq('form').css('visibility','hidden');
+});
+
 var htLocker=htLocker||{};
 
 var ht={};
@@ -14,18 +20,26 @@ ht.saveToLocker=function(tag,val){
 
 ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
 ht.getED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
-ht.addED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
+ht.addED=Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
 
 ht.engine = Qualtrics.SurveyEngine;
 
 ht.keyQs={}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
-ht.registerKeyQ=function(tag,q){
+ht.registerKeyQ=function(tag,q,logAsED){//logAsED is just a boolean flag to indicate whether to also save the value into an embedded data
 	this.keyQs[tag]=q;
 	var qId="#"+q.questionId;
 	var that=this;
+	var qResp;
 	jq(qId).mouseleave(function(){
-		that.saveKeyQResp(tag);
+		qResp=that.saveKeyQResp(tag);
 	});
+	if(logAsED && qResp){
+		if(ht.getED) {
+			ht.setED(tag,qResp);
+		}else{
+			ht.addED(tag,qResp);
+		}
+	}
 }
 
 ht.saveKeyQResp=function(tag){
@@ -61,6 +75,7 @@ ht.saveKeyQResp=function(tag){
 	}
 		
 	this.saveToLocker(tag,val);
+	return val;
 	
 };
 ht.checkPageReady=function () {
@@ -70,6 +85,7 @@ ht.checkPageReady=function () {
 	}
 	clearInterval(tmpInterval);
 	console.log('ready');
+	jq('form').css('visibility',ogFormStyle);
 	if (ht.onPageReady) {
 		ht.onPageReady();
 	} else {
