@@ -1,7 +1,7 @@
 var jq = $.noConflict();
 var origiFormStyle;
 var checkReadyInterval;
-var htLocker=htLocker||{};
+
 jq(function(){
     origiFormStyle=jq('form').css('visibility');
 	jq('form').css('visibility','hidden');
@@ -10,35 +10,54 @@ jq(function(){
 
 var ht={};
 
+var htLocker=htLocker||{};//persistent object
 ht.fetchFromLocker=function(tag){
 	return htLocker[tag];
 }
-
 ht.saveToLocker=function(tag,val){
 	htLocker[tag]=val;
 }
 
-ht.setED=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);
-ht.getED=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);
-ht.addED=Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
+ht.setED0=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);//not really used
+ht.getED0=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);//not really used therefore the 0 suffix
+//ht.addED=Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
+
+var htEDVault=htEDVault||{};//persistent object
+
+ht.setED=function(edName,edVal){
+	ht.setED0(edName,edVal);
+	if(!htEDVault.hasOwnProperty(edName)){
+		htEDVault[edName]=blocks.observable(edVal);
+	}else{
+		htEDVault[edName](edVal);
+	}
+	
+};
+
+ht.getED=function(edName,edVal){
+	if (!ht.getED0(edName)) {
+		console.log('ED non-existent; creating one');
+		ht.setED(edName,edVal);
+	}else{
+		if(!htEDVault.hasOwnProperty(edName)){
+			ht.setED(edName,ht.getED0(edName));
+			}
+	}
+	return ht.getED0(edName);
+};
 
 ht.engine = Qualtrics.SurveyEngine;//barely needed
 
 ht.keyQs={}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
-ht.registerKeyQ=function(tag,q){
+ht.registerKeyQ=function(tag,q,setAsED){
 	this.keyQs[tag]=q;
 	var qId="#"+q.questionId;
-	var that=this;
-	var qResp;
 	jq(qId).mouseleave(function(){
-		qResp=that.saveKeyQResp(tag);
+		ht.saveKeyQResp(tag,setAsED);
 	});
-	if(qResp){
-		ht.setED(tag,val);
-	}
-}
+};
 
-ht.saveKeyQResp=function(tag){//no need to call directly
+ht.saveKeyQResp=function(tag,setAsED){//no need to call directly
 	var q=this.keyQs[tag]
 	var qInfo=q.getQuestionInfo();
 	var qType=qInfo.QuestionType;
@@ -73,7 +92,10 @@ ht.saveKeyQResp=function(tag){//no need to call directly
 	}
 		
 	this.saveToLocker(tag,val);
-	return val;
+	if(val && setAsED){
+		ht.setED(tag,val);
+		console.log(htEDVault);
+	}
 	
 };
 
@@ -81,9 +103,7 @@ ht.protei={};//this is not exposed to the user
 ht.addProteus=function(id,selector,options){
 		this.protei[id]=options[ht.getED(selector)];
 	};
-ht.unleashProtei=function(){//this is called in reveal form. user doesn't need to worry about it
-	blocks.query(ht.protei);
-};
+
 
 ht.checkPageReady=function () {//no need to call directly
 	if (!ht.engine.Page.__isReady) {
@@ -104,9 +124,17 @@ ht.pageReadyHandler=function(){//this is the internal page ready handler, user n
 	}
 };
 ht.revealForm=function(){
-	this.unleashProtei();
+	this.renderTemplate();
 	jq('form').css('visibility',origiFormStyle);
 }
+
+ht.templateObj={};
+ht.renderTemplate=function(){//this is called in reveal form. user doesn't need to worry about it
+	ht.templateObj=jq.extend(ht.protei,htEDVault);
+	blocks.query(ht.templateObj);
+	//blocks.query(ht.protei);
+	//blocks.query(htEDVault);
+};
 
 if(ht.engine.hasOwnProperty("Page")){
 	checkReadyInterval = setInterval(ht.checkPageReady, 40);
