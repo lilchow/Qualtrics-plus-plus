@@ -2,110 +2,130 @@ var jq = $.noConflict();
 var origiFormStyle;
 var checkReadyInterval;
 
-jq(function(){
-    origiFormStyle=jq('form').css('visibility');
-	jq('form').css('visibility','hidden');
+jq(function () {
+	origiFormStyle = jq('form').css('visibility');
+	jq('form').css('visibility', 'hidden');
 	console.log('hide form');
 });
 
-var ht={};
+var ht = {};
+ht.engine = Qualtrics.SurveyEngine; //barely needed
 
-var htLocker=htLocker||{};//persistent object
-ht.fetchFromLocker=function(tag){
+var htLocker = htLocker || {}; //persistent object
+ht.fetchFromLocker = function (tag) {
 	return htLocker[tag];
-}
-ht.saveToLocker=function(tag,val){
-	htLocker[tag]=val;
-}
-
-ht.setED0=Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine);//not really used
-ht.getED0=Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine);//not really used therefore the 0 suffix
-//ht.addED=Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
-
-var htEDVault=htEDVault||{};//persistent object
-
-ht.setED=function(edName,edVal){
-	ht.setED0(edName,edVal);
-	if(!htEDVault.hasOwnProperty(edName)){
-		htEDVault[edName]=blocks.observable(edVal);
-	}else{
-		htEDVault[edName](edVal);
-	}
-	
+};
+ht.saveToLocker = function (tag, val) {
+	htLocker[tag] = val;
 };
 
-ht.getED=function(edName,edVal){
-	if (!ht.getED0(edName)) {
-		console.log('ED non-existent; creating one');
-		ht.setED(edName,edVal);
-	}else{
-		if(!htEDVault.hasOwnProperty(edName)){
-			ht.setED(edName,ht.getED0(edName));
+ht.setED = Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
+ht.getED = Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used therefore the 0 suffix
+ht.addED = Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
+
+var htBeamer = htBeamer || {}; //persistent object; it contains beamables
+
+
+
+
+ht.registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
+
+ht.registerQ = function (q, qTag, edTag, beamableTag) {
+	//dynamically monitoring the answer and set it to both ED and beamable
+	if (!edTag) edTag = qTag;
+	if (!beamableTag) beamableTag = edTag;
+	ht.registeredQs[qTag] = q;
+	var qId = "#" + q.questionId;
+	jq(qId).mouseleave(function () {
+		var resp = ht.obtainQResp(q);
+		if (!resp) {
+			return;
+		}
+		ht.setED(edTag, resp);
+		ht.setStandaloneBeamable(beamableTag, resp);
+	});
+
+};
+
+
+ht.obtainQResp = function (q) {
+	var qInfo = q.getQuestionInfo();
+	var qType = qInfo.QuestionType;
+	var qSelector = qInfo.Selector;
+	var choices = q.getChoices();
+	var answers = q.getAnswers();
+
+	var resp = null;
+
+	switch (true) {
+	case qType === 'MC':
+		if (q.getSelectedChoices()[0]) {
+			resp = qInfo.Choices[q.getSelectedChoices()[0]].Text;
+			//resp=choices.indexOf(q.getChoiceValue())+1;
+		} else {
+			resp = "";
+		}
+		break;
+	case qType === "TE" && qSelector !== "FORM":
+		resp = q.getChoiceValue();
+		break;
+	case qType === "TE" && qSelector === "FORM":
+		resp = jq.map(choices, function (val) {
+			return q.getTextValue(val);
+		});
+		break;
+	case qType === "Matrix":
+		resp = jq.map(choices, function (val) {
+			if (qInfo.Answers[q.getSelectedAnswerValue(val)]) {
+				return qInfo.Answers[q.getSelectedAnswerValue(val)].Display;
+			} else {
+				return "";
 			}
+			//return answers.indexOf(q.getChoiceValue(val))+1
+		});
+		break;
+	case qType === "Slider":
+		resp = jq.map(choices, function (val) {
+			return Number(q.getChoiceValue(val));
+		});
+		break;
 	}
-	return ht.getED0(edName);
+
+	console.log('obtained response: ', resp);
+	return resp;
 };
 
-ht.engine = Qualtrics.SurveyEngine;//barely needed
+ht.setEDAsBeamable = function (edTag, edVal, beamableTag) {
+	//edVal is used when ED doesn't exist
+	if (!beamableTag) beamableTag = edTag;
+	if (!ht.getED(edTag)) {
+		console.log('ED non-existent; creating one');
+		ht.setED(edTag, edVal);
+	}
+	ht.setStandaloneBeamable(beamableTag, ht.getED(edTag));
+};
 
-ht.keyQs={}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
-ht.registerKeyQ=function(tag,q,setAsED){
-	this.keyQs[tag]=q;
-	var qId="#"+q.questionId;
-	jq(qId).mouseleave(function(){
-		ht.saveKeyQResp(tag,setAsED);
+ht.setStandaloneBeamable = function (beamableTag, beamableVal) {
+	if (!htBeamer.hasOwnProperty(beamableTag)) {
+		htBeamer[beamableTag] = blocks.observable(beamableVal);
+	} else {
+		htBeamer[beamableTag](beamableVal);
+	}
+};
+ht.setDependentBeamable = function (beamableTag, hostBeamableTag, alternatives) {
+	if (!htBeamer[hostBeamableTag]) {
+		return;
+	}
+	if (beamableTag === hostBeamableTag) {
+		return;
+	}
+
+	htBeamer[beamableTag] = blocks.observable(function () {
+		return alternatives[htBeamer[hostBeamableTag]()];
 	});
 };
 
-ht.saveKeyQResp=function(tag,setAsED){//no need to call directly
-	var q=this.keyQs[tag]
-	var qInfo=q.getQuestionInfo();
-	var qType=qInfo.QuestionType;
-	var qSelect=qInfo.Selector;
-	var choices=q.getChoices();
-	var answers=q.getAnswers();
-
-	var val;
-	
-	if(qType==='MC'){
-		if (qInfo.Choices[q.getChoiceValue()]) val=qInfo.Choices[q.getChoiceValue()].Text;
-		else val="";
-		//val=choices.indexOf(q.getChoiceValue())+1;
-	}else if(qType==="TE" && qSelect==="SL"){
-		val=q.getChoiceValue();
-	}else if(qType==="TE" && qSelect==="FORM"){
-		val=jq.map(choices,function(val){
-			return q.getTextValue(val);
-		});
-	}else if(qType==="Matrix"){
-		val=jq.map(choices,function(val){
-			if(qInfo.Answers[q.getChoiceValue(val)]) return qInfo.Answers[q.getChoiceValue(val)].Display;
-			else return "";
-			//return answers.indexOf(q.getChoiceValue(val))+1
-		});
-	}else if(qType==="Slider"){
-		val=jq.map(choices,function(val){
-			return Number(q.getChoiceValue(val));
-		});
-	}else{
-		return;
-	}
-		
-	this.saveToLocker(tag,val);
-	if(val && setAsED){
-		ht.setED(tag,val);
-		console.log(htEDVault);
-	}
-	
-};
-
-ht.protei={};//this is not exposed to the user
-ht.addProteus=function(id,selector,options){
-		this.protei[id]=options[ht.getED(selector)];
-	};
-
-
-ht.checkPageReady=function () {//no need to call directly
+ht.checkPageReady = function () { //no need to call directly
 	if (!ht.engine.Page.__isReady) {
 		console.log('not ready');
 		return;
@@ -115,28 +135,49 @@ ht.checkPageReady=function () {//no need to call directly
 	ht.pageReadyHandler();
 };
 
-ht.pageReadyHandler=function(){//this is the internal page ready handler, user needs to define their own onPageReady handler
+ht.pageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
 	if (ht.onPageReady) {
+		console.log('run custom onPageReady function');
 		ht.onPageReady();
 	} else {
-		console.log('onPageReady function not found');
-		ht.revealForm();
+		console.log('no custom onPageReady function');
+		ht.showPage();
 	}
 };
-ht.revealForm=function(){
-	this.renderTemplate();
-	jq('form').css('visibility',origiFormStyle);
-}
-
-ht.templateObj={};
-ht.renderTemplate=function(){//this is called in reveal form. user doesn't need to worry about it
-	ht.templateObj=jq.extend(ht.protei,htEDVault);
-	blocks.query(ht.templateObj);
-	//blocks.query(ht.protei);
-	//blocks.query(htEDVault);
+ht.showPage = function () {
+	blocks.query(htBeamer);
+	jq('form').css('visibility', origiFormStyle);
 };
 
-if(ht.engine.hasOwnProperty("Page")){
-	checkReadyInterval = setInterval(ht.checkPageReady, 40);
-}
- 
+ht.addFormHints = function (q, hints) {
+	var qInfo = q.getQuestionInfo();
+	if (qInfo.QuestionType === 'TE' && Array.isArray(hints) && qInfo.Selector === 'FORM') {
+		var jqEle = jq("#" + q.questionId).find('.InputText');
+		if (jqEle.length !== hints.length) {
+			return;
+		} else {
+			jqEle.each(function (idx) {
+				jq(this).attr("placeholder", hints[idx]);
+			});
+		}
+	}
+
+};
+
+ht.addTextEntryHint = function (q, hint) {
+	var qInfo = q.getQuestionInfo();
+	if (qInfo.QuestionType === 'TE' && qInfo.Selector !== 'FORM') {
+		jq("#" + q.questionId).find('.InputText').attr("placeholder", hint);
+	}
+};
+
+ht.decorateTextEntry = function (q, pre, post, width) {
+	var qInfo = q.getQuestionInfo();
+	if (qInfo.QuestionType === 'TE' && qInfo.Selector === 'SL') {
+		jq("#" + q.questionId).find('.InputText')
+			.css('display', 'inline')
+			.before('<span>' + pre + "</span>")
+			.after('<span>' + post + "</span>")
+			.width(width + 'px');
+	}
+};
