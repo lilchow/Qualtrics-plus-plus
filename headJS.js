@@ -7,27 +7,27 @@ jq(function () {
 	jq('form').css('visibility', 'hidden');
 });
 
-var previewEDLocker=previewEDLocker||{};
+var previewEDLocker = previewEDLocker || {};
 
 var qPP = {};
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
 
-qPP.edLocker=qPP.engine.Page?qPP.engine.Page.runtime.ED:previewEDLocker;//this is an object
+qPP.edLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDLocker; //this is an object
 var qPPBeamer = qPPBeamer || {}; //persistent object; it contains beamables; beamables are enhanced ED so they share the same tag. Every beamable has a counterpart in edLocker
 
-qPP.setED = function(tag,val){
-	qPP.edLocker[tag]=val;
+qPP.setED = function (tag, val) {
+	qPP.edLocker[tag] = val;
 };
-	//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
-qPP.getED =function(tag){
+//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
+qPP.getED = function (tag) {
 	return qPP.edLocker[tag];
 };
-	//Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used therefore the 0 suffix
-qPP.addED = function(tag,val){
-	qPP.edLocker[tag]=val;
+//Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used therefore the 0 suffix
+qPP.addED = function (tag, val) {
+	qPP.edLocker[tag] = val;
 };
 
-	//Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
+//Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
 
 
 qPP.registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
@@ -46,7 +46,7 @@ qPP.registerQ = function (q, tag) {
 
 };
 
-qPP.beamifyED = function (edTag, edVal) {//this function might not be used at all
+qPP.beamifyED = function (edTag, edVal) { //this function might not be used at all
 	//edVal is used when ED doesn't exist
 	if (!qPP.getED(edTag)) {
 		console.log('pure ED non-existent; creating one with supplied value');
@@ -56,20 +56,20 @@ qPP.beamifyED = function (edTag, edVal) {//this function might not be used at al
 	qPP.setBeamableED(edTag, qPP.getED(edTag));
 };
 
-qPP.beamifyAllEDs=function(){
-	console.log('all existing EDs:',Object.keys(qPP.edLocker));
-	jq.each(qPP.edLocker,function(tag,val){
-		qPP.setBeamableED(tag,val);
-		});
+qPP.beamifyAllEDs = function () {
+	console.log('all existing EDs:', Object.keys(qPP.edLocker));
+	jq.each(qPP.edLocker, function (tag, val) {
+		qPP.setBeamableED(tag, val);
+	});
 };
 
-qPP.setTmpBeamableED=function (beamableTag, beamableVal){//set temporary beamable ED for block preview purpose
-	if(qPP.engine.Page) return;
-	qPP.setBeamableED(beamableTag,beamableVal);
+qPP.setTmpBeamableED = function (beamableTag, beamableVal) { //set temporary beamable ED for block preview purpose
+	if (qPP.engine.Page) return;
+	qPP.setBeamableED(beamableTag, beamableVal);
 };
 
-qPP.setBeamableED = function (beamableTag, beamableVal) {//this function is normally called by registerQ or by showPage set all EDs beamable
-	qPP.setED(beamableTag,beamableVal);
+qPP.setBeamableED = function (beamableTag, beamableVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
+	qPP.setED(beamableTag, beamableVal);
 	if (!qPPBeamer.hasOwnProperty(beamableTag)) {
 		qPPBeamer[beamableTag] = blocks.observable(beamableVal);
 	} else {
@@ -77,30 +77,29 @@ qPP.setBeamableED = function (beamableTag, beamableVal) {//this function is norm
 	}
 };
 
-qPP.setDependentBeamable = function (beamableTag, valueTree, dependencyArray) {//dependent beamables should NOT be stored in ED system
-	if(qPP.edLocker.hasOwnProperty(beamableTag)){
+qPP.setDependentBeamable = function (beamableTag, valueTree, dependencyArray) { //dependent beamables should NOT be stored in ED system
+	if (qPP.edLocker.hasOwnProperty(beamableTag)) {
 		return;
 	}
 	if (!Array.isArray(dependencyArray)) {
 		return;
 	}
 	//check for existence of contingency tags in beamer and the contingent beamable's tag is not contained in the contingency tags array
-	var dependencyValid=true;
-	jq.each(dependencyArray,function (idx, tag) {
-		if (beamableTag === tag || !qPPBeamer.hasOwnProperty(tag)){
-			dependencyValid=false;
+	var dependencyValid = true;
+	jq.each(dependencyArray, function (idx, tag) {
+		if (beamableTag === tag || !qPPBeamer.hasOwnProperty(tag)) {
+			dependencyValid = false;
 			return false;
 		}
 	});
-	
-	if(!dependencyValid){
+
+	if (!dependencyValid) {
 		return;
 	}
 	qPPBeamer[beamableTag] = blocks.observable(function () {
-		return dependencyArray.reduce(function(prev,current){
-			console.log(prev,qPPBeamer[current]());
+		return dependencyArray.reduce(function (prev, current) {
 			return prev[qPPBeamer[current]()];
-		},valueTree);
+		}, valueTree);
 	});
 };
 
@@ -124,9 +123,15 @@ qPP.internalPageReadyHandler = function () { //this is the internal page ready h
 		qPP.showPage();
 	}
 };
+
 qPP.showPage = function () {
-	blocks.query(qPPBeamer);
-	jq('form').css('visibility', origiFormStyle);
+	try {
+		blocks.query(qPPBeamer);
+	} catch (err) {
+		toastr["error"](err.message, "ERROR")
+	} finally {
+		jq('form').css('visibility', origiFormStyle);
+	}
 };
 
 qPP.addFormHints = function (q, hintArray) {
@@ -207,4 +212,19 @@ qPP.obtainQResp = function (q) {
 	}
 	console.log('obtained response: ', resp);
 	return resp;
+};
+
+//this is setting the notification system with toastr
+toastr.options = {
+  "closeButton": true,
+  "debug": false,
+  "newestOnTop": false,
+  "progressBar": false,
+  "positionClass": "toast-top-center",
+  "preventDuplicates": true,
+  "onclick": null,
+  "showDuration": "0",
+  "hideDuration": "0",
+  "timeOut": "1000000",
+  "extendedTimeOut": "0"
 };
