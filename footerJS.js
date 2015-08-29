@@ -1,5 +1,5 @@
 if (qPP.engine.hasOwnProperty("Page")) {
-	checkReadyInterval = setInterval(qPP.checkPageReady, 30);
+	qPP.checkPageReady();
 }else{
 	setTimeout(function() {
 		console.log('preview page ready');

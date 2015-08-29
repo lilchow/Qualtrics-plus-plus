@@ -1,6 +1,5 @@
 var jq = $.noConflict();
 var origiFormStyle;
-var checkReadyInterval;
 
 jq(function () {
 	origiFormStyle = jq('form').css('visibility');
@@ -104,13 +103,13 @@ qPP.setDependentBeamable = function (beamableTag, valueTree, dependencyArray) { 
 };
 
 qPP.checkPageReady = function () { //no need to call directly
-	if (!qPP.engine.Page.__isReady) {
-		console.log('not ready');
+	if (qPP.engine.Page.__isReady) {
+		console.log('production page ready');
+		qPP.internalPageReadyHandler();
 		return;
 	}
-	clearInterval(checkReadyInterval);
-	console.log('production page ready');
-	qPP.internalPageReadyHandler();
+	console.log('page not ready');
+	setTimeout(qPP.checkPageReady, 30);
 };
 
 qPP.internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
@@ -167,6 +166,18 @@ qPP.decorateTextEntry = function (q, pre, post, width) {
 	}
 };
 
+qPP.hideButtons = function () {
+	if (qPP.engine.hasOwnProperty("Page")) {
+		if (qPP.engine.Page.__isReady) {
+			jq('#Buttons').hide();
+			return;
+		}
+		setTimeout(qPP.hideButtons, 50);
+	} else {
+		jq('#Buttons').hide();
+	}
+};
+
 
 qPP.obtainQResp = function (q) {
 	var qInfo = q.getQuestionInfo();
@@ -214,17 +225,147 @@ qPP.obtainQResp = function (q) {
 	return resp;
 };
 
+qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFactor) {
+	jq("#" + q.questionId+' .QuestionText').html('').addClass('ht-bt')
+		.prepend('<div id="vPlayerContainer" class="center-block text-center"><kbd id="videoStatus">video status</kbd></div>');
+	var statusMsg = jq('#videoStatus');
+	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
+
+	var videoW = scaleFactor * videoFileW;
+	var videoH = scaleFactor * videoFileH;
+	var vPlayerWPadding = videoH * 0.10;
+	var vPlayerHPadding = videoH * 0.15;
+
+	var bootState = {
+		preload: function () {
+			vPlayer.load.baseURL = assetBaseUrl;
+			vPlayer.scale.pageAlignHorizontally = true;
+			vPlayer.scale.refresh();
+			vPlayer.load.image('progressBar', 'progressBar.png');
+		},
+		create: function () {
+			vPlayer.stage.backgroundColor = "#333";
+			vPlayer.state.start('load');
+		}
+	};
+
+	var loadState = {
+		preload: function () {
+			var progressBar = vPlayer.add.sprite(vPlayer.world.centerX, vPlayer.world.centerY, 'progressBar');
+			progressBar.anchor.setTo(0.5, 0.5);
+			vPlayer.load.setPreloadSprite(progressBar);
+			vPlayer.load.video('video', videoUrl);
+			vPlayer.load.spritesheet('ppBtn', 'playpause.jpg', 40, 40);
+			vPlayer.load.image('volUBtn', 'volUBtn.jpg');
+			vPlayer.load.image('volDBtn', 'volDBtn.jpg');
+		},
+		create: function () {
+			vPlayer.state.start('play');
+		}
+	};
+
+	var playState = {
+		create: function () {
+			statusMsg.text('video ready and click PLAY to play');
+
+			this.ppBtn = vPlayer.add.button(vPlayer.world.centerX, vPlayer.world.height, 'ppBtn', this.togglePlay, this, 1, 1, 1, 1);
+			this.ppBtn.anchor.setTo(0.5, 1);
+			this.ppBtn.height = this.ppBtn.width = vPlayerHPadding * 0.7;
+
+
+			var volUBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.centerY, 'volUBtn', this.incVol, this);
+			volUBtn.anchor.setTo(1, 0.5);
+			volUBtn.height = volUBtn.width = vPlayerWPadding * 0.7;
+			volUBtn.y = volUBtn.y - volUBtn.height;
+
+			var volDBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.centerY, 'volDBtn', this.decVol, this);
+			volDBtn.anchor.setTo(1, 0.5);
+			volDBtn.height = volDBtn.width = vPlayerWPadding * 0.7;
+			volDBtn.y = volDBtn.y + volDBtn.height;
+
+			this.video = vPlayer.add.video('video');
+			this.video.onComplete.add(this.onVideoComplete, this);
+			this.video.volume = 0.5;
+			this.video.paused = true;
+			this.videoSprite = this.video.addToWorld(vPlayerWPadding * 0.1, vPlayerHPadding * 0.1, 0, 0, scaleFactor, scaleFactor);
+
+
+		},
+		update: function () {
+
+		},
+		togglePlay: function () {
+			if (this.video.paused) {
+				this.playVideo();
+			} else {
+				this.pauseVideo();
+			}
+		},
+		playVideo: function () {
+			statusMsg.text('video playing');
+			this.ppBtn.setFrames(0, 0, 0, 0);
+			this.video.paused = false;
+			this.video.play();
+		},
+		pauseVideo: function () {
+			statusMsg.text('video paused');
+			this.ppBtn.setFrames(1, 1, 1, 1);
+			this.video.paused = true;
+		},
+		incVol: function () {
+			console.log(this.video.volume);
+			if (this.video.volume < 1) {
+				this.video.volume += 0.1;
+			}
+		},
+
+		decVol: function () {
+			console.log(this.video.volume);
+			if (this.video.volume > 0) {
+				this.video.volume -= 0.1;
+			}
+		},
+
+		onVideoComplete: function () {
+			statusMsg.text('video completed');
+			this.postCompleteProcessing();
+		},
+
+		postCompleteProcessing: function () {
+			vPlayer.state.start('end');
+		}
+
+	};
+
+	var endState = {
+		create: function () {
+			jq('#Buttons').show();
+		}
+	};
+
+	var vPlayer = new Phaser.Game(videoW + vPlayerWPadding, videoH + vPlayerHPadding, Phaser.CANVAS, 'vPlayerContainer');
+	vPlayer.state.add('boot', bootState);
+	vPlayer.state.add('load', loadState);
+	vPlayer.state.add('play', playState);
+	vPlayer.state.add('end', endState);
+	vPlayer.state.start('boot');
+	console.log('try playing video');
+	qPP.hideButtons();
+	
+
+};
+
 //this is setting the notification system with toastr
 toastr.options = {
-  "closeButton": true,
-  "debug": false,
-  "newestOnTop": false,
-  "progressBar": false,
-  "positionClass": "toast-top-center",
-  "preventDuplicates": true,
-  "onclick": null,
-  "showDuration": "0",
-  "hideDuration": "0",
-  "timeOut": "1000000",
-  "extendedTimeOut": "0"
+	"closeButton": true,
+	"debug": false,
+	"newestOnTop": false,
+	"progressBar": false,
+	"positionClass": "toast-top-center",
+	"preventDuplicates": true,
+	"onclick": null,
+	"showDuration": "0",
+	"hideDuration": "0",
+	"timeOut": "1000000",
+	"extendedTimeOut": "0"
 };
