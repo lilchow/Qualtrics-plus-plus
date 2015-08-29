@@ -10,9 +10,12 @@ var previewEDLocker = previewEDLocker || {};
 
 var qPP = {};
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
-
+qPP.mdCnt = 0; //count the number of questions which have mdModeOn
 qPP.edLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDLocker; //this is an object
-var qPPBeamer = qPPBeamer || {}; //persistent object; it contains beamables; beamables are enhanced ED so they share the same tag. Every beamable has a counterpart in edLocker
+var qPPBeamer = qPPBeamer || {
+	ect: {}, //ED contigent text
+	ecl: {} //ED contigent link
+}; //persistent object; it contains beamables; beamables are enhanced ED so they share the same tag. Every beamable has a counterpart in edLocker
 
 qPP.setED = function (tag, val) {
 	qPP.edLocker[tag] = val;
@@ -31,7 +34,7 @@ qPP.addED = function (tag, val) {
 
 qPP.registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
 
-qPP.registerQ = function (q, tag) {
+qPP.registerResp = function (q, tag) {
 	//dynamically monitoring the answer and set it to both ED and beamable
 	qPP.registeredQs[tag] = q;
 	var qId = "#" + q.questionId;
@@ -42,6 +45,21 @@ qPP.registerQ = function (q, tag) {
 		}
 		qPP.setBeamableED(tag, resp);
 	});
+
+};
+
+qPP.registerImgs = function (q, tag) {
+	var imgs = jq('#' + q.questionId).find('.QuestionText').find('img');
+	if (imgs.length === 1) {
+		qPPBeamer.ecl[tag] = blocks.observable(imgs.attr('src'));
+	} else {
+		var arr = [];
+		imgs.each(function () {
+			arr.push(jq(this).attr('src'));
+		});
+		qPPBeamer.ecl[tag] = blocks.observable(arr);
+	}
+
 
 };
 
@@ -76,17 +94,14 @@ qPP.setBeamableED = function (beamableTag, beamableVal) { //this function is nor
 	}
 };
 
-qPP.setDependentBeamable = function (beamableTag, valueTree, dependencyArray) { //dependent beamables should NOT be stored in ED system
-	if (qPP.edLocker.hasOwnProperty(beamableTag)) {
-		return;
-	}
-	if (!Array.isArray(dependencyArray)) {
+qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dependent beamables should NOT be stored in ED system
+	if (ectTag === 'ect' || ectTag === 'ecl' || !Array.isArray(contigencyEDArray)) {
 		return;
 	}
 	//check for existence of contingency tags in beamer and the contingent beamable's tag is not contained in the contingency tags array
 	var dependencyValid = true;
-	jq.each(dependencyArray, function (idx, tag) {
-		if (beamableTag === tag || !qPPBeamer.hasOwnProperty(tag)) {
+	jq.each(contigencyEDArray, function (idx, tag) {
+		if (!qPPBeamer.hasOwnProperty(tag)) {
 			dependencyValid = false;
 			return false;
 		}
@@ -95,8 +110,8 @@ qPP.setDependentBeamable = function (beamableTag, valueTree, dependencyArray) { 
 	if (!dependencyValid) {
 		return;
 	}
-	qPPBeamer[beamableTag] = blocks.observable(function () {
-		return dependencyArray.reduce(function (prev, current) {
+	qPPBeamer.ect[ectTag] = blocks.observable(function () {
+		return contigencyEDArray.reduce(function (prev, current) {
 			return prev[qPPBeamer[current]()];
 		}, valueTree);
 	});
@@ -124,13 +139,18 @@ qPP.internalPageReadyHandler = function () { //this is the internal page ready h
 };
 
 qPP.showPage = function () {
-	try {
-		blocks.query(qPPBeamer);
-	} catch (err) {
-		toastr["error"](err.message, "ERROR")
-	} finally {
-		jq('form').css('visibility', origiFormStyle);
+	if (qPP.mdCnt !== 0) {
+		qPP.renderMD();
+	} else {
+		try {
+			blocks.query(qPPBeamer);
+		} catch (err) {
+			toastr["error"](err.message, "ERROR");
+		} finally {
+			jq('form').css('visibility', origiFormStyle);
+		}
 	}
+
 };
 
 qPP.addFormHints = function (q, hintArray) {
@@ -148,14 +168,14 @@ qPP.addFormHints = function (q, hintArray) {
 
 };
 
-qPP.addTextEntryHint = function (q, hint) {
+qPP.addNonFormHint = function (q, hint) {
 	var qInfo = q.getQuestionInfo();
 	if (qInfo.QuestionType === 'TE' && qInfo.Selector !== 'FORM') {
 		jq("#" + q.questionId).find('.InputText').attr("placeholder", hint);
 	}
 };
 
-qPP.decorateTextEntry = function (q, pre, post, width) {
+qPP.decorateSingleLine = function (q, pre, post, width) {
 	var qInfo = q.getQuestionInfo();
 	if (qInfo.QuestionType === 'TE' && qInfo.Selector === 'SL') {
 		jq("#" + q.questionId).find('.InputText')
@@ -178,6 +198,25 @@ qPP.hideButtons = function () {
 	}
 };
 
+qPP.mdModeOn = function (q) {
+	qPP.mdCnt++;
+	jq('#' + q.questionId).find('.QuestionText')
+		.addClass('ht-bt mdMode');
+};
+
+qPP.renderMD = function () {
+	jq('.ht-bt.mdMode').each(function (idx) {
+		var ele = jq(this);
+		if ((idx + 1) < qPP.mdCnt) {
+			ele.html(marked(ele.text()));
+		} else {
+			ele.html(marked(ele.text()));
+			qPP.mdCnt = 0;
+			qPP.showPage();
+		}
+
+	});
+};
 
 qPP.obtainQResp = function (q) {
 	var qInfo = q.getQuestionInfo();
@@ -225,16 +264,22 @@ qPP.obtainQResp = function (q) {
 	return resp;
 };
 
-qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFactor) {
-	jq("#" + q.questionId+' .QuestionText').html('').addClass('ht-bt')
-		.prepend('<div id="vPlayerContainer" class="center-block text-center"><kbd id="videoStatus">video status</kbd></div>');
-	var statusMsg = jq('#videoStatus');
+qPP.createVideoPlayer = function (q, videoUrl, videoFileW, videoFileH, scaleFactor) {
+	jq("#" + q.questionId + ' .QuestionText').html('').addClass('ht-bt')
+		.prepend('<div id="vPlayerContainer" class="center-block text-center"></div>');
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
 	var videoW = scaleFactor * videoFileW;
 	var videoH = scaleFactor * videoFileH;
-	var vPlayerWPadding = videoH * 0.10;
-	var vPlayerHPadding = videoH * 0.15;
+	var vPlayerHPadding = 18;
+
+	var statusMsg;
+	var msgTextStyle = {
+		font: Math.floor(vPlayerHPadding * 0.7) + 'px Arial',
+		fill: '#bbb',
+		align: 'center'
+	};
+
 
 	var bootState = {
 		preload: function () {
@@ -245,14 +290,19 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 		},
 		create: function () {
 			vPlayer.stage.backgroundColor = "#333";
+			console.log('boot completed');
 			vPlayer.state.start('load');
 		}
 	};
 
 	var loadState = {
 		preload: function () {
+			vPlayer.add.text(vPlayer.world.centerX, vPlayer.world.centerY - 10, 'loading video...', {
+				font: '22px Arial',
+				fill: '#ccc'
+			}).anchor.setTo(0.5, 1);
 			var progressBar = vPlayer.add.sprite(vPlayer.world.centerX, vPlayer.world.centerY, 'progressBar');
-			progressBar.anchor.setTo(0.5, 0.5);
+			progressBar.anchor.setTo(0.5, 0);
 			vPlayer.load.setPreloadSprite(progressBar);
 			vPlayer.load.video('video', videoUrl);
 			vPlayer.load.spritesheet('ppBtn', 'playpause.jpg', 40, 40);
@@ -266,29 +316,33 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 
 	var playState = {
 		create: function () {
-			statusMsg.text('video ready and click PLAY to play');
 
-			this.ppBtn = vPlayer.add.button(vPlayer.world.centerX, vPlayer.world.height, 'ppBtn', this.togglePlay, this, 1, 1, 1, 1);
-			this.ppBtn.anchor.setTo(0.5, 1);
-			this.ppBtn.height = this.ppBtn.width = vPlayerHPadding * 0.7;
+			statusMsg = vPlayer.add.text(vPlayer.world.centerX, videoH, '', msgTextStyle);
+			statusMsg.anchor.setTo(0.5, 0);
+			statusMsg.text = 'video ready and click PLAY to play';
 
+			this.ppBtn = vPlayer.add.button(0, vPlayer.world.height, 'ppBtn', this.togglePlay, this, 1, 1, 1, 1);
+			this.ppBtn.anchor.setTo(0, 1);
+			this.ppBtn.height = this.ppBtn.width = vPlayerHPadding;
 
-			var volUBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.centerY, 'volUBtn', this.incVol, this);
-			volUBtn.anchor.setTo(1, 0.5);
-			volUBtn.height = volUBtn.width = vPlayerWPadding * 0.7;
-			volUBtn.y = volUBtn.y - volUBtn.height;
+			var volUBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.height, 'volUBtn', this.incVol, this);
+			volUBtn.anchor.setTo(1, 1);
+			volUBtn.height = vPlayerHPadding;
+			volUBtn.width = volUBtn.height * 0.75;
 
-			var volDBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.centerY, 'volDBtn', this.decVol, this);
-			volDBtn.anchor.setTo(1, 0.5);
-			volDBtn.height = volDBtn.width = vPlayerWPadding * 0.7;
-			volDBtn.y = volDBtn.y + volDBtn.height;
+			var volDBtn = vPlayer.add.button(vPlayer.world.width, vPlayer.world.height, 'volDBtn', this.decVol, this);
+			volDBtn.anchor.setTo(1, 1);
+			volDBtn.height = vPlayerHPadding;
+			volDBtn.width = volDBtn.height * 0.75;
+			volDBtn.x = volDBtn.x - volUBtn.width;
 
 			this.video = vPlayer.add.video('video');
 			this.video.onComplete.add(this.onVideoComplete, this);
 			this.video.volume = 0.5;
 			this.video.paused = true;
-			this.videoSprite = this.video.addToWorld(vPlayerWPadding * 0.1, vPlayerHPadding * 0.1, 0, 0, scaleFactor, scaleFactor);
+			this.videoSprite = this.video.addToWorld(0, 0, 0, 0, scaleFactor, scaleFactor);
 
+			vPlayer.onPause.add(this.pauseVideo, this);
 
 		},
 		update: function () {
@@ -302,13 +356,13 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 			}
 		},
 		playVideo: function () {
-			statusMsg.text('video playing');
+			statusMsg.text = "video playing";
 			this.ppBtn.setFrames(0, 0, 0, 0);
 			this.video.paused = false;
 			this.video.play();
 		},
 		pauseVideo: function () {
-			statusMsg.text('video paused');
+			statusMsg.text = "video paused";
 			this.ppBtn.setFrames(1, 1, 1, 1);
 			this.video.paused = true;
 		},
@@ -327,7 +381,7 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 		},
 
 		onVideoComplete: function () {
-			statusMsg.text('video completed');
+			vPlayer.onPause.removeAll(this);
 			this.postCompleteProcessing();
 		},
 
@@ -339,11 +393,15 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 
 	var endState = {
 		create: function () {
+			vPlayer.add.text(vPlayer.world.centerX, vPlayer.world.centerY, 'The End', {
+				font: '24px Arial',
+				fill: '#fff'
+			}).anchor.setTo(0.5, 0.5);
 			jq('#Buttons').show();
 		}
 	};
 
-	var vPlayer = new Phaser.Game(videoW + vPlayerWPadding, videoH + vPlayerHPadding, Phaser.CANVAS, 'vPlayerContainer');
+	var vPlayer = new Phaser.Game(videoW, videoH + vPlayerHPadding, Phaser.CANVAS, 'vPlayerContainer');
 	vPlayer.state.add('boot', bootState);
 	vPlayer.state.add('load', loadState);
 	vPlayer.state.add('play', playState);
@@ -351,9 +409,10 @@ qPP.createVideoPlayer = function (q,videoUrl, videoFileW, videoFileH, scaleFacto
 	vPlayer.state.start('boot');
 	console.log('try playing video');
 	qPP.hideButtons();
-	
+
 
 };
+
 
 //this is setting the notification system with toastr
 toastr.options = {
@@ -368,4 +427,19 @@ toastr.options = {
 	"hideDuration": "0",
 	"timeOut": "1000000",
 	"extendedTimeOut": "0"
+};
+
+//utility helper function
+qPP.shuffleArray = function (array) {
+	var currentIndex = array.length,
+		temporaryValue, randomIndex;
+	while (0 !== currentIndex) {
+		randomIndex = Math.floor(Math.random() * currentIndex);
+		currentIndex -= 1;
+		temporaryValue = array[currentIndex];
+		array[currentIndex] = array[randomIndex];
+		array[randomIndex] = temporaryValue;
+	}
+
+	return array;
 };
