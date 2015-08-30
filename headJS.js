@@ -139,7 +139,7 @@ qPP.internalPageReadyHandler = function () { //this is the internal page ready h
 };
 
 qPP.showPage = function () {
-	if (qPP.mdCnt !== 0) {
+	if (qPP.mdCnt > 0) {
 		qPP.renderMD();
 	} else {
 		try {
@@ -205,16 +205,15 @@ qPP.mdModeOn = function (q) {
 };
 
 qPP.renderMD = function () {
-	jq('.ht-bt.mdMode').each(function (idx) {
-		var ele = jq(this);
-		if ((idx + 1) < qPP.mdCnt) {
-			ele.html(marked(ele.text()));
+	var ele = jq('.ht-bt.mdMode').get(--qPP.mdCnt);
+	var txt = ele.text().replace(/^\s*/, "");
+	marked(txt,{renderer: qPP.mdRenderer},function (err, htmlCode) {
+		ele.html(htmlCode);
+		if (qPP.mdCnt > 0) {
+			qPP.renderMD();
 		} else {
-			ele.html(marked(ele.text()));
-			qPP.mdCnt = 0;
 			qPP.showPage();
 		}
-
 	});
 };
 
@@ -265,8 +264,15 @@ qPP.obtainQResp = function (q) {
 };
 
 qPP.createVideoPlayer = function (q, videoUrl, videoFileW, videoFileH, scaleFactor) {
-	jq("#" + q.questionId + ' .QuestionText').html('').addClass('ht-bt')
-		.prepend('<div id="vPlayerContainer" class="center-block text-center"></div>');
+	var containerParent;
+	if (!q.questionId) {
+		containerParent = jq(' .QuestionText');
+	} else {
+		containerParent = jq("#" + q.questionId + ' .QuestionText');
+	}
+
+	containerParent.html('').addClass('ht-bt').prepend('<div id="vPlayerContainer" class="center-block text-center"></div>');
+
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
 	var videoW = scaleFactor * videoFileW;
@@ -442,4 +448,12 @@ qPP.shuffleArray = function (array) {
 	}
 
 	return array;
+};
+
+qPP.mdRenderer = new marked.Renderer();
+qPP.mdRenderer.image = function (href, title, text) {
+	var src = 'src="' + href + '"';
+	var imgClass = text === 'center' ? 'class="center-block"' : '';
+	var style = ['style="',"width: ", title, "px;", "height: auto;", "display: block;",'"'].join('');
+	return ['<img', src, imgClass, style, '>'].join(' ');
 };
