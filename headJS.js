@@ -1,4 +1,5 @@
 var jq = $.noConflict();
+var qPPSignal = signals.Signal;
 var origiFormStyle;
 
 jq(function () {
@@ -9,6 +10,7 @@ jq(function () {
 var previewEDLocker = previewEDLocker || {};
 
 var qPP = {};
+qPP.pageReadySgn = new qPPSignal();
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
 qPP.mdCnt = 0; //count the number of questions which have mdModeOn
 qPP.edLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDLocker; //this is an object
@@ -17,15 +19,15 @@ var qPPBeamer = qPPBeamer || {
 	ecl: {} //ED contigent link
 }; //persistent object; it contains beamables; beamables are enhanced ED so they share the same tag. Every beamable has a counterpart in edLocker
 
-qPP.setED = function (tag, val) {
+qPP.setEDRaw = function (tag, val) {
 	qPP.edLocker[tag] = val;
 };
 //Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
-qPP.getED = function (tag) {
+qPP.getEDRaw = function (tag) {
 	return qPP.edLocker[tag];
 };
 //Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used therefore the 0 suffix
-qPP.addED = function (tag, val) {
+qPP.addEDRaw = function (tag, val) {
 	qPP.edLocker[tag] = val;
 };
 
@@ -34,7 +36,7 @@ qPP.addED = function (tag, val) {
 
 qPP.registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
 
-qPP.registerResp = function (q, tag) {
+qPP.saveRespAsED = function (q, tag) { //EDP means ED plus
 	//dynamically monitoring the answer and set it to both ED and beamable
 	qPP.registeredQs[tag] = q;
 	var qId = "#" + q.questionId;
@@ -43,7 +45,7 @@ qPP.registerResp = function (q, tag) {
 		if (!resp) {
 			return;
 		}
-		qPP.setBeamableED(tag, resp);
+		qPP.setED(tag, resp);
 	});
 
 };
@@ -63,34 +65,34 @@ qPP.registerImgs = function (q, tag) {
 
 };
 
-qPP.beamifyED = function (edTag, edVal) { //this function might not be used at all
+qPP.upgradeED = function (edTag, edVal) { //this function might not be used at all
 	//edVal is used when ED doesn't exist
-	if (!qPP.getED(edTag)) {
+	if (!qPP.getEDRaw(edTag)) {
 		console.log('pure ED non-existent; creating one with supplied value');
-		qPP.setBeamableED(edTag, edVal);
+		qPP.setED(edTag, edVal);
 		return;
 	}
-	qPP.setBeamableED(edTag, qPP.getED(edTag));
+	qPP.setED(edTag, qPP.getEDRaw(edTag));
 };
 
-qPP.beamifyAllEDs = function () {
+qPP.upgradeAllEDs = function () { //called at the begnning of every page
 	console.log('all existing EDs:', Object.keys(qPP.edLocker));
 	jq.each(qPP.edLocker, function (tag, val) {
-		qPP.setBeamableED(tag, val);
+		qPP.setED(tag, val);
 	});
 };
 
-qPP.setTmpBeamableED = function (beamableTag, beamableVal) { //set temporary beamable ED for block preview purpose
+qPP.setPreviewED = function (edTag, edVal) { //set temporary beamable ED for block preview purpose
 	if (qPP.engine.Page) return;
-	qPP.setBeamableED(beamableTag, beamableVal);
+	qPP.setED(edTag, edVal);
 };
 
-qPP.setBeamableED = function (beamableTag, beamableVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
-	qPP.setED(beamableTag, beamableVal);
-	if (!qPPBeamer.hasOwnProperty(beamableTag)) {
-		qPPBeamer[beamableTag] = blocks.observable(beamableVal);
+qPP.setED = function (edTag, edVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
+	qPP.setEDRaw(edTag, edVal);
+	if (!qPPBeamer.hasOwnProperty(edTag)) {
+		qPPBeamer[edTag] = blocks.observable(edVal);
 	} else {
-		qPPBeamer[beamableTag](beamableVal);
+		qPPBeamer[edTag](edVal);
 	}
 };
 
@@ -117,28 +119,32 @@ qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dep
 	});
 };
 
-qPP.checkPageReady = function () { //no need to call directly
-	if (qPP.engine.Page.__isReady) {
-		console.log('production page ready');
-		qPP.internalPageReadyHandler();
-		return;
+qPP.checkPageReady = function (status) { //no need to call directly
+	if (!status) {
+		if (qPP.engine.Page.__isReady) {
+			console.log('production page ready');
+		} else {
+			console.log('page not ready');
+			setTimeout(qPP.checkPageReady, 30);
+			return;
+		}
 	}
-	console.log('page not ready');
-	setTimeout(qPP.checkPageReady, 30);
+	qPP.internalPageReadyHandler();
 };
 
 qPP.internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
-	qPP.beamifyAllEDs();
+	qPP.upgradeAllEDs();
+	qPP.pageReadySgn.dispatch();
 	if (qPP.onPageReady) {
 		console.log('run custom onPageReady function');
 		qPP.onPageReady();
 	} else {
 		console.log('no custom onPageReady function');
-		qPP.showPage();
+		qPP.renderPage();
 	}
 };
 
-qPP.showPage = function () {
+qPP.renderPage = function () {
 	if (qPP.mdCnt > 0) {
 		qPP.renderMD();
 	} else {
@@ -187,15 +193,9 @@ qPP.decorateSingleLine = function (q, pre, post, width) {
 };
 
 qPP.hideButtons = function () {
-	if (qPP.engine.hasOwnProperty("Page")) {
-		if (qPP.engine.Page.__isReady) {
-			jq('#Buttons').hide();
-			return;
-		}
-		setTimeout(qPP.hideButtons, 50);
-	} else {
+	qPP.pageReadySgn.add(function(){
 		jq('#Buttons').hide();
-	}
+	})
 };
 
 qPP.mdModeOn = function (q) {
@@ -205,14 +205,16 @@ qPP.mdModeOn = function (q) {
 };
 
 qPP.renderMD = function () {
-	var ele = jq('.ht-bt.mdMode').get(--qPP.mdCnt);
+	var ele = jq('.ht-bt.mdMode').eq(--qPP.mdCnt);
 	var txt = ele.text().replace(/^\s*/, "");
-	marked(txt,{renderer: qPP.mdRenderer},function (err, htmlCode) {
+	marked(txt, {
+		renderer: qPP.mdRenderer
+	}, function (err, htmlCode) {
 		ele.html(htmlCode);
 		if (qPP.mdCnt > 0) {
 			qPP.renderMD();
 		} else {
-			qPP.showPage();
+			qPP.renderPage();
 		}
 	});
 };
@@ -271,7 +273,7 @@ qPP.createVideoPlayer = function (q, videoUrl, videoFileW, videoFileH, scaleFact
 		containerParent = jq("#" + q.questionId + ' .QuestionText');
 	}
 
-	containerParent.html('').addClass('ht-bt').prepend('<div id="vPlayerContainer" class="center-block text-center"></div>');
+	containerParent.addClass('ht-bt').append('<div id="vPlayerContainer" class="center-block text-center"></div>');
 
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
@@ -419,6 +421,136 @@ qPP.createVideoPlayer = function (q, videoUrl, videoFileW, videoFileH, scaleFact
 
 };
 
+qPP.createAudioChecker = function (q, length) {
+	if (!length) length = 4;
+	var markerSet = [1, 2, 3, 4, 5, 6, 7, 8];
+	var markerDurations = [574, 679, 679, 679, 626, 783, 731, 501];
+	var markerStartPoints = markerDurations.concat();
+	for (var i = 0; i < markerSet.length; i++) {
+		markerStartPoints[i] = markerDurations.slice(0, i + 1).reduce(function (p, i) {
+			return p + i;
+		});
+	}
+	markerStartPoints.pop();
+	markerStartPoints.unshift(0);
+	var chosenMarkerSet = qPP.shuffleArray(markerSet).slice(0, length);
+	var usedMarkerSet = [];
+	var answer = '3512'//chosenMarkerSet.join(''); //this is the answer participant should type in
+
+	var containerParent;
+	if (!q.questionId) {
+		containerParent = jq(' .QuestionText');
+	} else {
+		containerParent = jq("#" + q.questionId + ' .QuestionText');
+	}
+
+	containerParent.addClass('ht-bt').append('<div id="audioCheckerContainer" class="center-block"></div>');
+	jq('#audioCheckerContainer').after('<div class="alert alert-danger">Code incorrect. Try again.</div>');
+	jq('.alert-danger').hide();
+	
+	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
+
+	var mainState = {
+		preload: function () {
+			audioChecker.load.baseURL = assetBaseUrl;
+			audioChecker.scale.pageAlignHorizontally = true;
+			audioChecker.scale.refresh();
+			audioChecker.stage.backgroundColor = "#67727A";
+			audioChecker.load.audio('totalClip', 'digits/digits.mp3');
+		},
+		create: function () {
+			var btnW = 120,
+				btnH = 60;
+			this.playBtn = audioChecker.add.graphics(0, 0);
+			this.playBtn.beginFill(0xD75C37, 1);
+			this.playBtn.drawRoundedRect(audioChecker.world.width * 0.25 - btnW / 2, audioChecker.world.centerY - btnH / 2, btnW, btnH, 2);
+			this.playBtn.inputEnabled = true;
+			this.playBtn.input.useHandCursor = true;
+			this.playBtnTxt = audioChecker.add.text(audioChecker.world.width * 0.25, audioChecker.world.centerY, 'PLAY CLIP', {
+				font: '16px Arial',
+				fill: '#000'
+			})
+			this.playBtnTxt.anchor.setTo(0.5, 0.5);
+			this.playBtn.events
+				.onInputDown.addOnce(this.tryPlayNext.bind(this), this);
+
+			this.checkBtn = audioChecker.add.graphics(0, 0);
+			this.checkBtn.beginFill(0x6991AC, 1);
+			this.checkBtn.drawRoundedRect(audioChecker.world.width * 0.75 - btnW / 2, audioChecker.world.centerY - btnH / 2, btnW, btnH, 2);
+			this.checkBtn.inputEnabled = true;
+			this.checkBtn.input.useHandCursor = true;
+			this.checkBtnTxt = audioChecker.add.text(audioChecker.world.width * 0.75, audioChecker.world.centerY, 'CHECK ENTRY', {
+				font: '16px Arial',
+				fill: '#111'
+			});
+			this.checkBtnTxt.anchor.setTo(0.5, 0.5);
+			this.checkBtn.events
+				.onInputDown.add(this.checkEntry.bind(this), this);
+
+			this.totalClip = audioChecker.add.audio('totalClip');
+			this.totalClip.allowMultiple = false;
+			for (var i = 0; i < markerSet.length; i++) {
+				this.totalClip.addMarker(String(i + 1), markerStartPoints[i] / 1000, markerDurations[i] / 1000);
+			}
+
+		},
+		update: function () {
+			//console.log(this.playBtnTxt.text);
+		},
+		tryPlayNext: function () {
+			this.playBtnTxt.text = "PLAYING";
+			this.playBtnTxt.fill = "#999";
+			if (chosenMarkerSet.length > 0) {
+				var tmp = chosenMarkerSet.shift();
+				usedMarkerSet.push(tmp);
+				this.totalClip.onStop
+					.addOnce(this.tryPlayNext.bind(this), this);
+				this.totalClip.play(String(tmp));
+			} else {
+				this.playCompleteHandler();
+			}
+		},
+		checkEntry:function(){
+			var entry=qPP.obtainQResp();
+			if(!entry) {
+				return;
+			}else if(entry===answer){
+				jq('.alert-danger').hide();
+				audioChecker.state.start('end');
+			}else{
+				jq('.alert-danger').show();
+			}
+	},
+		playCompleteHandler: function () {
+			chosenMarkerSet = usedMarkerSet.concat();
+			usedMarkerSet = [];
+			this.playBtnTxt.text = "REPLAY";
+			this.playBtnTxt.fill = "#000";
+			this.playBtn.events
+				.onInputDown.addOnce(this.tryPlayNext.bind(this));
+			console.log('all digits played and the answer is: ', answer);
+		}
+
+	};
+	var endState = {
+		create: function () {
+			audioChecker.stage.backgroundColor = "#EAEAEA";
+			audioChecker.add.text(audioChecker.world.centerX, audioChecker.world.centerY, 'Correct!', {
+				font: '24px Arial',
+				fill: '#111'
+			}).anchor.setTo(0.5, 0.5);
+			jq('#Buttons').show();
+		}
+	};
+
+	var audioChecker = new Phaser.Game(400, 150, Phaser.CANVAS, 'audioCheckerContainer');
+	audioChecker.state.add('main', mainState);
+	audioChecker.state.add('end', endState);
+	audioChecker.state.start('main');
+	qPP.hideButtons();
+
+};
+
 
 //this is setting the notification system with toastr
 toastr.options = {
@@ -454,6 +586,6 @@ qPP.mdRenderer = new marked.Renderer();
 qPP.mdRenderer.image = function (href, title, text) {
 	var src = 'src="' + href + '"';
 	var imgClass = text === 'center' ? 'class="center-block"' : '';
-	var style = ['style="',"width: ", title, "px;", "height: auto;", "display: block;",'"'].join('');
+	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
 	return ['<img', src, imgClass, style, '>'].join(' ');
 };
