@@ -26,6 +26,7 @@ qPP.registeredQs = {}; //this is for storing important question objects, with th
 qPP.saveRespAsED = function (q, tag) { //ED means ED plus
 	//dynamically monitoring the answer and set it to both ED and beamable
 	qPP.registeredQs[tag] = q;
+	qPP.setED(tag, qPP.getRawED(tag) || null);
 	var qId = "#" + q.questionId;
 	jq(qId).mouseleave(function () {
 		var resp = qPP.obtainQResp(q);
@@ -67,19 +68,10 @@ qPP.upgradeAllRawEDs = function () { //called at the begnning of every page, if 
 	});
 };
 
-qPP.setBeamerED = function (edTag, edVal) {
-	if (!qPPBeamer.hasOwnProperty(edTag)) {
-		qPPBeamer[edTag] = blocks.observable(edVal);
-	} else {
-		qPPBeamer[edTag](edVal);
-	}
-};
-
 qPP.setED = function (edTag, edVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
 	qPP.setRawED(edTag, edVal);
 	qPP.setBeamerED(edTag, edVal);
 };
-
 
 qPP.softSetED = function (edTag, edVal) { //set temporary beamable ED for block preview purpose
 	if (qPP.rawEDLocker.hasOwnProperty(edTag)) {
@@ -88,12 +80,48 @@ qPP.softSetED = function (edTag, edVal) { //set temporary beamable ED for block 
 	qPP.setED(edTag, edVal);
 };
 
-qPP.setRawED = function (tag, val) {
-	qPP.rawEDLocker[tag] = val;
-};
-//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
-qPP.getRawED = function (tag) {
-	return qPP.rawEDLocker[tag];
+qPP.setCompositeED = function (edTag, formula) {
+	if (qPPBeamer.hasOwnProperty(edTag)) {
+		return;
+	}
+
+	var regPattern = /[A-Za-z_]\w+(?=[)+*/-]+|$|\s+)/g;
+	var dependencyEDArray = [];
+
+	formula = formula.replace(regPattern, function (match) {
+		dependencyEDArray.push(match);
+		return ['qPPBeamer[', '"', match, '"]()'].join('');
+	});
+
+	if (dependencyEDArray.length === 0) {
+		return;
+	}
+	var dependencyValid = true;
+	jq.each(dependencyEDArray, function (idx, tag) {
+		if (!qPPBeamer.hasOwnProperty(tag)) {
+			dependencyValid = false;
+			return false;
+		}
+	});
+
+	if (!dependencyValid) {
+		return;
+	}
+
+	console.log(edTag, ":", formula);
+
+	qPPBeamer[edTag] = blocks.observable(function () {
+		var newValue;
+		try{
+			newValue=eval(formula);
+		}catch(err){
+			newValue=null;
+		} 
+		qPP.setRawED(edTag, newValue);
+		return newValue;
+	});
+
+	qPP.setRawED(edTag, qPPBeamer[edTag]());
 };
 
 qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dependent beamables should NOT be stored in ED system
@@ -118,6 +146,23 @@ qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dep
 		}, valueTree);
 	});
 };
+
+qPP.setRawED = function (tag, val) {
+	qPP.rawEDLocker[tag] = val;
+};
+//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
+qPP.getRawED = function (tag) {
+	return qPP.rawEDLocker[tag];
+};
+
+qPP.setBeamerED = function (edTag, edVal) {
+	if (!qPPBeamer.hasOwnProperty(edTag)) {
+		qPPBeamer[edTag] = blocks.observable(edVal);
+	} else {
+		qPPBeamer[edTag](edVal);
+	}
+};
+
 
 
 qPP.internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
@@ -220,6 +265,14 @@ qPP.disablePaste = function () {
 	});
 };
 
+qPP.respToNumber = function (resp) {
+	if (isNaN(resp)) {
+		return resp;
+	} else {
+		return Number(resp);
+	}
+};
+
 qPP.obtainQResp = function (q) {
 	var qInfo = q.getQuestionInfo();
 	var qType = qInfo.QuestionType;
@@ -233,6 +286,7 @@ qPP.obtainQResp = function (q) {
 	case qType === 'MC':
 		if (q.getSelectedChoices()[0]) {
 			resp = qInfo.Choices[q.getSelectedChoices()[0]].Text;
+			resp = qPP.respToNumber(resp);
 			//resp=choices.indexOf(q.getChoiceValue())+1;
 		} else {
 			resp = "";
@@ -240,16 +294,17 @@ qPP.obtainQResp = function (q) {
 		break;
 	case qType === "TE" && qSelector !== "FORM":
 		resp = q.getChoiceValue();
+		resp = qPP.respToNumber(resp);
 		break;
 	case qType === "TE" && qSelector === "FORM":
 		resp = jq.map(choices, function (val) {
-			return q.getTextValue(val);
+			return qPP.respToNumber(q.getTextValue(val));
 		});
 		break;
 	case qType === "Matrix":
 		resp = jq.map(choices, function (val) {
 			if (qInfo.Answers[q.getSelectedAnswerValue(val)]) {
-				return qInfo.Answers[q.getSelectedAnswerValue(val)].Display;
+				return qPP.respToNumber(qInfo.Answers[q.getSelectedAnswerValue(val)].Display);
 			} else {
 				return "";
 			}
@@ -258,7 +313,7 @@ qPP.obtainQResp = function (q) {
 		break;
 	case qType === "Slider":
 		resp = jq.map(choices, function (val) {
-			return Number(q.getChoiceValue(val));
+			return qPP.respToNumber(q.getChoiceValue(val));
 		});
 		break;
 	}
