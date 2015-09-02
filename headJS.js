@@ -9,34 +9,21 @@ jq(function () {
 
 var previewEDLocker = previewEDLocker || {};
 
-var qPP = {};
-qPP.pageReadySgn = new qPPSignal();
-qPP.engine = Qualtrics.SurveyEngine; //barely needed
-qPP.mdCnt = 0; //count the number of questions which have mdModeOn
-qPP.edLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDLocker; //this is an object
 var qPPBeamer = qPPBeamer || {
 	ect: {}, //ED contigent text
 	ecl: {} //ED contigent link
 }; //persistent object; it contains beamables; beamables are enhanced ED so they share the same tag. Every beamable has a counterpart in edLocker
 
-qPP.setEDRaw = function (tag, val) {
-	qPP.edLocker[tag] = val;
-};
-//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
-qPP.getEDRaw = function (tag) {
-	return qPP.edLocker[tag];
-};
-//Qualtrics.SurveyEngine.getEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used therefore the 0 suffix
-qPP.addEDRaw = function (tag, val) {
-	qPP.edLocker[tag] = val;
-};
-
-//Qualtrics.SurveyEngine.addEmbeddedData.bind(Qualtrics.SurveyEngine);
-
+var qPP = {};
+qPP.windowLoadedSgn = new qPPSignal();
+qPP.pageReadySgn = new qPPSignal();
+qPP.engine = Qualtrics.SurveyEngine; //barely needed
+qPP.mdCnt = 0; //count the number of questions which have mdModeOn
+qPP.rawEDLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDLocker; //edLocker only stores snapshot of ED that can be used in flow or display logic
 
 qPP.registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
 
-qPP.saveRespAsED = function (q, tag) { //EDP means ED plus
+qPP.saveRespAsED = function (q, tag) { //ED means ED plus
 	//dynamically monitoring the answer and set it to both ED and beamable
 	qPP.registeredQs[tag] = q;
 	var qId = "#" + q.questionId;
@@ -65,35 +52,48 @@ qPP.registerImgs = function (q, tag) {
 
 };
 
-qPP.upgradeED = function (edTag, edVal) { //this function might not be used at all
-	//edVal is used when ED doesn't exist
-	if (!qPP.getEDRaw(edTag)) {
-		console.log('pure ED non-existent; creating one with supplied value');
-		qPP.setED(edTag, edVal);
+qPP.upgradeRawED = function (edTag) { //this function might not be used at all
+	// if raw ED doesn't exist or it has already been upgraded, simply ignore
+	if (!qPP.getRawED(edTag) || qPPBeamer.hasOwnProperty(edTag)) {
 		return;
 	}
-	qPP.setED(edTag, qPP.getEDRaw(edTag));
+	qPP.setBeamerED(edTag, qPP.getRawED(edTag));
 };
 
-qPP.upgradeAllEDs = function () { //called at the begnning of every page
-	console.log('all existing EDs:', Object.keys(qPP.edLocker));
-	jq.each(qPP.edLocker, function (tag, val) {
-		qPP.setED(tag, val);
+qPP.upgradeAllRawEDs = function () { //called at the begnning of every page, if locker has new raw ED it will be fed to Beamer
+	console.log('all existing raw EDs:', Object.keys(qPP.rawEDLocker));
+	jq.each(qPP.rawEDLocker, function (tag) {
+		qPP.upgradeRawED(tag);
 	});
 };
 
-qPP.setPreviewED = function (edTag, edVal) { //set temporary beamable ED for block preview purpose
-	if (qPP.engine.Page) return;
-	qPP.setED(edTag, edVal);
-};
-
-qPP.setED = function (edTag, edVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
-	qPP.setEDRaw(edTag, edVal);
+qPP.setBeamerED = function (edTag, edVal) {
 	if (!qPPBeamer.hasOwnProperty(edTag)) {
 		qPPBeamer[edTag] = blocks.observable(edVal);
 	} else {
 		qPPBeamer[edTag](edVal);
 	}
+};
+
+qPP.setED = function (edTag, edVal) { //this function is normally called by registerQ or by showPage set all EDs beamable
+	qPP.setRawED(edTag, edVal);
+	qPP.setBeamerED(edTag, edVal);
+};
+
+
+qPP.softSetED = function (edTag, edVal) { //set temporary beamable ED for block preview purpose
+	if (qPP.rawEDLocker.hasOwnProperty(edTag)) {
+		return;
+	}
+	qPP.setED(edTag, edVal);
+};
+
+qPP.setRawED = function (tag, val) {
+	qPP.rawEDLocker[tag] = val;
+};
+//Qualtrics.SurveyEngine.setEmbeddedData.bind(Qualtrics.SurveyEngine); //not really used
+qPP.getRawED = function (tag) {
+	return qPP.rawEDLocker[tag];
 };
 
 qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dependent beamables should NOT be stored in ED system
@@ -119,21 +119,10 @@ qPP.setEDContigentText = function (ectTag, valueTree, contigencyEDArray) { //dep
 	});
 };
 
-qPP.checkPageReady = function (status) { //no need to call directly
-	if (!status) {
-		if (qPP.engine.Page.__isReady) {
-			console.log('production page ready');
-		} else {
-			console.log('page not ready');
-			setTimeout(qPP.checkPageReady, 30);
-			return;
-		}
-	}
-	qPP.internalPageReadyHandler();
-};
 
 qPP.internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
-	qPP.upgradeAllEDs();
+	console.log('page ready');
+	qPP.upgradeAllRawEDs();
 	qPP.pageReadySgn.dispatch();
 	if (qPP.onPageReady) {
 		console.log('run custom onPageReady function');
@@ -153,10 +142,10 @@ qPP.renderPage = function () {
 		} catch (err) {
 			toastr["error"](err.message, "ERROR");
 		} finally {
+			qPP.disablePaste();
 			jq('form').css('visibility', origiFormStyle);
 		}
 	}
-
 };
 
 qPP.addFormHints = function (q, hintArray) {
@@ -192,10 +181,16 @@ qPP.decorateSingleLine = function (q, pre, post, width) {
 	}
 };
 
-qPP.hideButtons = function () {
-	qPP.pageReadySgn.add(function(){
+qPP.hideButtons = function (time) { //time in seconds
+	qPP.pageReadySgn.add(function () {
 		jq('#Buttons').hide();
-	})
+		if (!time) {
+			return;
+		}
+		setTimeout(function () {
+			jq('#Buttons').show();
+		}, time * 1000);
+	});
 };
 
 qPP.mdModeOn = function (q) {
@@ -216,6 +211,12 @@ qPP.renderMD = function () {
 		} else {
 			qPP.renderPage();
 		}
+	});
+};
+
+qPP.disablePaste = function () {
+	jq(document).on("cut copy paste", ".QuestionBody input:text, .QuestionBody textarea", function (e) {
+		e.preventDefault();
 	});
 };
 
@@ -435,7 +436,7 @@ qPP.createAudioChecker = function (q, length) {
 	markerStartPoints.unshift(0);
 	var chosenMarkerSet = qPP.shuffleArray(markerSet).slice(0, length);
 	var usedMarkerSet = [];
-	var answer = '3512'//chosenMarkerSet.join(''); //this is the answer participant should type in
+	var answer = chosenMarkerSet.join(''); //this is the answer participant should type in
 
 	var containerParent;
 	if (!q.questionId) {
@@ -447,7 +448,7 @@ qPP.createAudioChecker = function (q, length) {
 	containerParent.addClass('ht-bt').append('<div id="audioCheckerContainer" class="center-block"></div>');
 	jq('#audioCheckerContainer').after('<div class="alert alert-danger">Code incorrect. Try again.</div>');
 	jq('.alert-danger').hide();
-	
+
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
 	var mainState = {
@@ -510,17 +511,17 @@ qPP.createAudioChecker = function (q, length) {
 				this.playCompleteHandler();
 			}
 		},
-		checkEntry:function(){
-			var entry=qPP.obtainQResp();
-			if(!entry) {
+		checkEntry: function () {
+			var entry = qPP.obtainQResp();
+			if (!entry) {
 				return;
-			}else if(entry===answer){
+			} else if (entry === answer) {
 				jq('.alert-danger').hide();
 				audioChecker.state.start('end');
-			}else{
+			} else {
 				jq('.alert-danger').show();
 			}
-	},
+		},
 		playCompleteHandler: function () {
 			chosenMarkerSet = usedMarkerSet.concat();
 			usedMarkerSet = [];
@@ -589,3 +590,25 @@ qPP.mdRenderer.image = function (href, title, text) {
 	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
 	return ['<img', src, imgClass, style, '>'].join(' ');
 };
+
+//non attribute definition code
+if (!qPP.engine.Page) {
+	qPP.windowLoadedSgn.add(qPP.internalPageReadyHandler);
+	qPP.engine.addOnload = function (handler) {
+		if ($('body') && $('body').hasClassName('EditSection'))
+			return;
+		try {
+			var obj = new Qualtrics.SurveyEngine.QuestionData();
+			obj.onload = handler;
+			qPP.windowLoadedSgn.add(obj.onload, obj, 2);
+		} catch (e) {
+			console.error('SE API Error: ' + e);
+		}
+	};
+} else {
+	qPP.engine.Page.once('ready', qPP.internalPageReadyHandler);
+}
+
+jq(window).load(function () {
+	qPP.windowLoadedSgn.dispatch();
+});
