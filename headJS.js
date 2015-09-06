@@ -34,6 +34,7 @@ if (!qPP.engine.Page) {
 
 } else {
 	iVars = iVars || {};
+	compEDFormulaLocker = compEDFormulaLocker || {};
 	edEntityLocker = edEntityLocker || {
 		atom: {}, //ED contigent text
 		comp: {} //ED contigent link
@@ -44,7 +45,7 @@ qPP.windowLoadedSgn = new qPP.signal();
 qPP.pageReadySgn = new qPP.signal();
 qPP.buttonsReadySgn = new qPP.signal();
 qPP.buttonsReadySgn.memorize = true;
-qPP.pageRenderedSgn = new qPP.signal();
+qPP.pageVisibleSgn = new qPP.signal();
 
 qPP.mdCnt = 0; //count the number of questions which have mdModeOn
 qPP.edValueLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDValueLocker; //edLocker only stores snapshot of ED that can be used in flow or display logic
@@ -202,6 +203,7 @@ qPP.setCompED = function (typeTag, formula) {
 	}
 
 	compEDFormulaLocker[typeTag] = rawFormula;
+	jq('form').after('<div style="display:none;">{{' + typeTag + '}}</div>'); //an invisible element to force it to be evaluated
 	edEntityLocker.comp[tag] = blocks.observable(function () {
 		var newValue;
 		try {
@@ -212,6 +214,7 @@ qPP.setCompED = function (typeTag, formula) {
 		qPP._setEDValue(typeTag, newValue);
 		return newValue;
 	});
+
 };
 
 qPP._recoverAllEDEntities = function () { //this is for non jfe mode runtime
@@ -230,7 +233,7 @@ qPP._recoverAllEDEntities = function () { //this is for non jfe mode runtime
 
 qPP.registerImgs = function (q, edTag) {
 	var urls;
-	qPP.pageRenderedSgn.addOnce(function () {
+	qPP.pageVisibleSgn.addOnce(function () {
 		urls = qPP._obtainQImgUrls(q);
 		for (var i = 0; i < urls.length; i++) {
 			qPP.setAtomED(edTag + (i + 1), urls);
@@ -248,15 +251,16 @@ qPP._obtainQImgUrls = function (q) {
 	return urls;
 };
 
+qPP._imagesReadyHandler = function () {
+	console.log('images loaded!')
+};
+
 qPP._internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
 	qPP._entityfyAllRawEDValues();
 	qPP.pageReadySgn.dispatch();
 	qPP.buttonsReadySgn.dispatch();
 	if (qPP.onPageReady) {
-		console.log('run custom onPageReady function');
 		qPP.onPageReady();
-	} else {
-		console.log('no custom onPageReady function');
 	}
 	qPP._renderPage();
 };
@@ -268,13 +272,21 @@ qPP._renderPage = function () {
 		try {
 			blocks.query(edEntityLocker);
 		} catch (err) {
-			console.error(err.message);
+			console.error("blocks.query rendering failed");
 		} finally {
 			qPP._disableCopyPaste();
-			jq('form').css('visibility', qPP.ogFormVisiblityStyle);
-			qPP.pageRenderedSgn.dispatch();
+			if (qPP.engine.Page) {
+				qPP.engine.Page.once("ready:imagesLoaded", qPP._imagesReadyHandler);
+				qPP.engine.Page.setupImageLoadVerification();
+			}
+			qPP._makePageVisible();
 		}
 	}
+};
+
+qPP._makePageVisible = function () {
+	jq('form').css('visibility', qPP.ogFormVisiblityStyle);
+	qPP.pageVisibleSgn.dispatch();
 };
 
 qPP.addTextEntryHints = function (q) {
@@ -295,9 +307,9 @@ qPP.addTextEntryHints = function (q) {
 };
 
 
-qPP.decorateSingleLine = function (q, pre, post, width) {
-	if(!width){
-		width=50;
+qPP.decorateTextEntry = function (q, pre, post, width) {
+	if (!width) {
+		width = 50;
 	}
 	if (qPP._getQuestionType(q) === 'TE' && qPP._getQuestionSelector(q) === 'SL') {
 		jq("#" + q.questionId).find('.InputText')
@@ -307,6 +319,20 @@ qPP.decorateSingleLine = function (q, pre, post, width) {
 			.width(width + 'px');
 	}
 };
+
+qPP.decorateMultipleChoice = function (q, pre, post) {
+	if (qPP._getQuestionType(q) === 'MC') {
+		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure tbody');
+		var topRow = choiceTbl.find('tr').first();
+		var lblRow = topRow.after("<tr>").next();
+		topRow.find('td').each(function () {
+			lblRow.append('<td>&mdash;</td>');
+		});
+		lblRow.find('td').first().text(pre);
+		lblRow.find('td').last().text(post);
+	}
+};
+
 
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
@@ -375,6 +401,7 @@ qPP._getQuestionSelector = function (q) {
 };
 
 qPP.obtainQResp = function (q) {
+	var qInfo = q.getQuestionInfo();
 	var qType = qPP._getQuestionType(q);
 	var qSelector = qPP._getQuestionSelector(q);
 	var choices = q.getChoices();
@@ -606,7 +633,7 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, fileW, fileH, scaleFac
 			jq('#Buttons').show();
 		}
 	};
-
+	console.log(mPlayerW, mPlayerH);
 	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, 'mediaPlayerContainer');
 	mPlayer.state.add('boot', bootState);
 	mPlayer.state.add('load', loadState);
@@ -772,16 +799,15 @@ qPP.createImageGrid = function (q, nCol, rowHeight, imgArray, baseUrl) {
 	} else {
 		gridContainer = jq("#" + q.questionId + ' .QuestionText');
 	}
-	console.log(gridContainer);
 	gridContainer.addClass('ht-bt').append('<div class="well">');
-	gridContainer = jq('.ht-bt .well');
+	gridContainer = gridContainer.find('.well');
 
 	for (var i = 0; i < nRow; i++) {
 		gridContainer.append(jq('<div class="row">'));
 	}
 
 
-	jq('.well .row').each(function (idx) {
+	gridContainer.find('.row').each(function (idx) {
 		var nthRow = idx + 1;
 		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
 			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
@@ -793,7 +819,7 @@ qPP.createImageGrid = function (q, nCol, rowHeight, imgArray, baseUrl) {
 		}
 	});
 
-	jq('.thumbnail .grid-img').each(function (idx) {
+	gridContainer.find('.thumbnail .grid-img').each(function (idx) {
 		jq(this).css({
 			height: rowHeight + 'px',
 			"background-image": 'url(' + imgArray[idx] + ')',
@@ -839,8 +865,8 @@ qPP.__carouselOptions = {
 
 qPP.createCarousel = function (q) {
 	qPP.hideButtons();
-	qPP.carouselQuestion = '#' + q.questionId;
-	qPP.carouselWidth = jq(qPP.carouselQuestion + ' .QuestionText').width();
+	qPP.carouselQuestionId = '#' + q.questionId;
+	qPP.carouselWidth = jq(qPP.carouselQuestionId + ' .QuestionText').width();
 
 	qPP._makeCarouselContainer()
 		.append(qPP._fillCarouselItemContainer())
@@ -858,7 +884,7 @@ qPP.createCarousel = function (q) {
 };
 
 qPP._makeCarouselContainer = function () { //screen is jssor outer container
-	jq(qPP.carouselQuestion + ' .QuestionText').addClass('ht-bt')
+	jq(qPP.carouselQuestionId + ' .QuestionText').addClass('ht-bt')
 		.append('<div id="carouselContainer" style="position: relative; top: 0px; left: 0px; width: ' + qPP.carouselWidth + 'px; height: ' + qPP.__carouselHeight + 'px;">');
 
 	return jq('#carouselContainer');
@@ -870,7 +896,7 @@ qPP._fillCarouselItemContainer = function () {
 	jq.each(qPP.__carouselItems, function (idx, val) {
 		var slideHtml = jq(val + ' .QuestionText').html();
 		var slideWrap = jq('<div>').append(
-			jq('<div style="height: ' + qPP.__carouselHeight + 'px;" class="text-center">').append(jq('<div style="display: inline-block; position: relative; top: 50%; transform: translateY(-50%);">').html(slideHtml))
+			jq('<div style="height: ' + qPP.__carouselHeight + 'px;">').append(jq('<div style="display: block; position: relative; top: 50%; transform: translateY(-50%);">').html(slideHtml))
 		);
 		carouselItemContainer.append(slideWrap);
 		jq(val).hide().next().hide();
@@ -922,7 +948,6 @@ if (!qPP.engine.Page) {
 	};
 } else {
 	qPP.engine.Page.once('ready', qPP._internalPageReadyHandler);
-
 }
 
 if (!qPP.engine.Page) { //this is for preview purpose
