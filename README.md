@@ -1,4 +1,4 @@
-# Qualtrics++: Pour Some Sugar on Qualtrics
+# Qualtrics++: Hulkifying Qualtrics
 
 Qualtrics is no doubt the king of online survey platform at least as far as academics are concerned. However, creating a working Qualtrics survey that involves moderately complicated logics is downright painful.
 
