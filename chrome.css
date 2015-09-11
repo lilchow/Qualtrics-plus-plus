@@ -1,0 +1,664 @@
+.gchrome {
+  /* heading elements */
+  /* tables */
+  /* for tables without table section elements (can happen with XHTML or dynamically created tables) */
+  /* lists */
+  /* form elements */
+  /* Form controls don't go vertical. */
+  /* meter */
+  /* progress */
+  /* inline elements */
+  /* states */
+  /* Read-only text fields do not show a focus ring but do still receive focus */
+  /* HTML5 ruby elements */
+  /* other elements */
+  /* page */
+}
+.gchrome p {
+  display: block;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1__qem;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+}
+.gchrome div {
+  display: block;
+}
+.gchrome layer {
+  display: block;
+}
+.gchrome article,
+.gchrome aside,
+.gchrome footer,
+.gchrome header,
+.gchrome hgroup,
+.gchrome main,
+.gchrome nav,
+.gchrome section {
+  display: block;
+}
+.gchrome marquee {
+  display: inline-block;
+}
+.gchrome address {
+  display: block;
+}
+.gchrome blockquote {
+  display: block;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 40px;
+  -webkit-margin-end: 40px;
+}
+.gchrome figcaption {
+  display: block;
+}
+.gchrome figure {
+  display: block;
+  -webkit-margin-before: 1em;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 40px;
+  -webkit-margin-end: 40px;
+}
+.gchrome q {
+  display: inline;
+}
+.gchrome q:before {
+  content: open-quote;
+}
+.gchrome q:after {
+  content: close-quote;
+}
+.gchrome center {
+  display: block;
+  /* special centering to be able to emulate the html4/netscape behaviour */
+  text-align: -webkit-center;
+}
+.gchrome hr {
+  display: block;
+  -webkit-margin-before: 0.5em;
+  -webkit-margin-after: 0.5em;
+  -webkit-margin-start: auto;
+  -webkit-margin-end: auto;
+  border-style: inset;
+  border-width: 1px;
+}
+.gchrome map {
+  display: inline;
+}
+.gchrome video {
+  object-fit: contain;
+}
+.gchrome h1 {
+  display: block;
+  font-size: 2em;
+  -webkit-margin-before: 0.67__qem;
+  -webkit-margin-after: 0.67em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome :-webkit-any(article,aside,nav,section) h1 {
+  font-size: 1.5em;
+  -webkit-margin-before: 0.83__qem;
+  -webkit-margin-after: 0.83em;
+}
+.gchrome :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) h1 {
+  font-size: 1.17em;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+}
+.gchrome :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) h1 {
+  font-size: 1.00em;
+  -webkit-margin-before: 1.33__qem;
+  -webkit-margin-after: 1.33em;
+}
+.gchrome :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) h1 {
+  font-size: .83em;
+  -webkit-margin-before: 1.67__qem;
+  -webkit-margin-after: 1.67em;
+}
+.gchrome :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) :-webkit-any(article,aside,nav,section) h1 {
+  font-size: .67em;
+  -webkit-margin-before: 2.33__qem;
+  -webkit-margin-after: 2.33em;
+}
+.gchrome h2 {
+  display: block;
+  font-size: 1.5em;
+  -webkit-margin-before: 0.83__qem;
+  -webkit-margin-after: 0.83em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome h3 {
+  display: block;
+  font-size: 1.17em;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome h4 {
+  display: block;
+  -webkit-margin-before: 1.33__qem;
+  -webkit-margin-after: 1.33em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome h5 {
+  display: block;
+  font-size: .83em;
+  -webkit-margin-before: 1.67__qem;
+  -webkit-margin-after: 1.67em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome h6 {
+  display: block;
+  font-size: .67em;
+  -webkit-margin-before: 2.33__qem;
+  -webkit-margin-after: 2.33em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  font-weight: bold;
+}
+.gchrome table {
+  display: table;
+  border-collapse: separate;
+  border-spacing: 2px;
+  border-color: gray;
+}
+.gchrome thead {
+  display: table-header-group;
+  vertical-align: middle;
+  border-color: inherit;
+}
+.gchrome tbody {
+  display: table-row-group;
+  vertical-align: middle;
+  border-color: inherit;
+}
+.gchrome tfoot {
+  display: table-footer-group;
+  vertical-align: middle;
+  border-color: inherit;
+}
+.gchrome table > tr {
+  vertical-align: middle;
+}
+.gchrome col {
+  display: table-column;
+}
+.gchrome colgroup {
+  display: table-column-group;
+}
+.gchrome tr {
+  display: table-row;
+  vertical-align: inherit;
+  border-color: inherit;
+}
+.gchrome td,
+.gchrome th {
+  display: table-cell;
+  vertical-align: inherit;
+}
+.gchrome th {
+  font-weight: bold;
+}
+.gchrome caption {
+  display: table-caption;
+  text-align: -webkit-center;
+}
+.gchrome ul,
+.gchrome menu,
+.gchrome dir {
+  display: block;
+  list-style-type: disc;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  -webkit-padding-start: 40px;
+}
+.gchrome ol {
+  display: block;
+  list-style-type: decimal;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+  -webkit-padding-start: 40px;
+}
+.gchrome li {
+  display: list-item;
+  text-align: -webkit-match-parent;
+}
+.gchrome ul ul,
+.gchrome ol ul {
+  list-style-type: circle;
+}
+.gchrome ol ol ul,
+.gchrome ol ul ul,
+.gchrome ul ol ul,
+.gchrome ul ul ul {
+  list-style-type: square;
+}
+.gchrome dd {
+  display: block;
+  -webkit-margin-start: 40px;
+}
+.gchrome dl {
+  display: block;
+  -webkit-margin-before: 1__qem;
+  -webkit-margin-after: 1em;
+  -webkit-margin-start: 0;
+  -webkit-margin-end: 0;
+}
+.gchrome dt {
+  display: block;
+}
+.gchrome ol ul,
+.gchrome ul ol,
+.gchrome ul ul,
+.gchrome ol ol {
+  -webkit-margin-before: 0;
+  -webkit-margin-after: 0;
+}
+.gchrome form {
+  display: block;
+  margin-top: 0__qem;
+}
+.gchrome label {
+  cursor: default;
+}
+.gchrome legend {
+  display: block;
+  -webkit-padding-start: 2px;
+  -webkit-padding-end: 2px;
+  border: none;
+}
+.gchrome fieldset {
+  display: block;
+  -webkit-margin-start: 2px;
+  -webkit-margin-end: 2px;
+  -webkit-padding-before: 0.35em;
+  -webkit-padding-start: 0.75em;
+  -webkit-padding-end: 0.75em;
+  -webkit-padding-after: 0.625em;
+  border: 2px groove ThreeDFace;
+  min-width: -webkit-min-content;
+}
+.gchrome button {
+  -webkit-appearance: button;
+}
+.gchrome input,
+.gchrome textarea,
+.gchrome keygen,
+.gchrome select,
+.gchrome button,
+.gchrome meter,
+.gchrome progress {
+  -webkit-writing-mode: horizontal-tb !important;
+}
+.gchrome input,
+.gchrome textarea,
+.gchrome keygen,
+.gchrome select,
+.gchrome button {
+  margin: 0__qem;
+  font: -webkit-small-control;
+  color: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  line-height: normal;
+  text-transform: none;
+  text-indent: 0;
+  text-shadow: none;
+  display: inline-block;
+  text-align: start;
+}
+.gchrome input::-webkit-textfield-decoration-container {
+  display: flex;
+  align-items: center;
+  -webkit-user-modify: read-only !important;
+  content: none !important;
+}
+.gchrome input::-webkit-clear-button {
+  -webkit-appearance: searchfield-cancel-button;
+  display: inline-block;
+  flex: none;
+  -webkit-user-modify: read-only !important;
+  -webkit-margin-start: 2px;
+  opacity: 0;
+  pionter-events: none;
+}
+.gchrome input:enabled:read-write:-webkit-any(:focus,:hover)::-webkit-clear-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+.gchrome input::-webkit-inner-spin-button {
+  -webkit-appearance: inner-spin-button;
+  display: inline-block;
+  cursor: default;
+  flex: none;
+  align-self: stretch;
+  -webkit-user-select: none;
+  -webkit-user-modify: read-only !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.gchrome input:enabled:read-write:-webkit-any(:focus,:hover)::-webkit-inner-spin-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+.gchrome keygen,
+.gchrome select {
+  border-radius: 5px;
+}
+.gchrome keygen::-webkit-keygen-select {
+  margin: 0px;
+}
+.gchrome textarea {
+  -webkit-appearance: textarea;
+  background-color: white;
+  border: 1px solid;
+  -webkit-rtl-ordering: logical;
+  -webkit-user-select: text;
+  flex-direction: column;
+  resize: auto;
+  cursor: auto;
+  padding: 2px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.gchrome ::-webkit-input-placeholder {
+  -webkit-text-security: none;
+  color: darkGray;
+  display: block !important;
+  pointer-events: none !important;
+}
+.gchrome option:-internal-spatial-navigation-focus {
+  outline: black dashed 1px;
+  outline-offset: -1px;
+}
+.gchrome datalist {
+  display: none;
+}
+.gchrome area {
+  display: inline;
+}
+.gchrome param {
+  display: none;
+}
+.gchrome select {
+  -webkit-appearance: menulist;
+  box-sizing: border-box;
+  align-items: center;
+  border: 1px solid;
+  white-space: pre;
+  -webkit-rtl-ordering: logical;
+  color: black;
+  background-color: white;
+  cursor: default;
+}
+.gchrome select:-internal-list-box {
+  -webkit-appearance: listbox;
+  align-items: flex-start;
+  border: 1px inset gray;
+  border-radius: initial;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  vertical-align: text-bottom;
+  -webkit-user-select: none;
+  white-space: nowrap;
+}
+.gchrome optgroup {
+  font-weight: bolder;
+  display: block;
+}
+.gchrome option {
+  font-weight: normal;
+  display: block;
+  padding: 0 2px 1px 2px;
+  white-space: pre;
+  min-height: 1.2em;
+}
+.gchrome select:-internal-list-box option,
+.gchrome select:-internal-list-box optgroup {
+  line-height: initial !important;
+}
+.gchrome select:-internal-list-box:focus option:checked {
+  background-color: -internal-active-list-box-selection !important;
+  color: -internal-active-list-box-selection-text !important;
+}
+.gchrome select:-internal-list-box option:checked {
+  background-color: -internal-inactive-list-box-selection !important;
+  color: -internal-inactive-list-box-selection-text !important;
+}
+.gchrome select:-internal-list-box:disabled option:checked,
+.gchrome select:-internal-list-box option:checked:disabled {
+  color: gray !important;
+}
+.gchrome output {
+  display: inline;
+}
+.gchrome meter {
+  -webkit-appearance: meter;
+  box-sizing: border-box;
+  display: inline-block;
+  height: 1em;
+  width: 5em;
+  vertical-align: -0.2em;
+}
+.gchrome meter::-webkit-meter-inner-element {
+  -webkit-appearance: inherit;
+  box-sizing: inherit;
+  -webkit-user-modify: read-only !important;
+  height: 100%;
+  width: 100%;
+}
+.gchrome meter::-webkit-meter-bar {
+  background: linear-gradient(to bottom, #dddddd, #eeeeee 20%, #cccccc 45%, #cccccc 55%, #dddddd);
+  height: 100%;
+  width: 100%;
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome meter::-webkit-meter-optimum-value {
+  background: linear-gradient(to bottom, #aadd77, #cceeaa 20%, #77aa33 45%, #77aa33 55%, #aadd77);
+  height: 100%;
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome meter::-webkit-meter-suboptimum-value {
+  background: linear-gradient(to bottom, #ffee77, #ffffcc 20%, #ddbb33 45%, #ddbb33 55%, #ffee77);
+  height: 100%;
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome meter::-webkit-meter-even-less-good-value {
+  background: linear-gradient(to bottom, #ff7777, #ffcccc 20%, #dd4444 45%, #dd4444 55%, #ff7777);
+  height: 100%;
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome progress {
+  -webkit-appearance: progress-bar;
+  box-sizing: border-box;
+  display: inline-block;
+  height: 1em;
+  width: 10em;
+  vertical-align: -0.2em;
+}
+.gchrome progress::-webkit-progress-inner-element {
+  -webkit-appearance: inherit;
+  box-sizing: inherit;
+  -webkit-user-modify: read-only;
+  height: 100%;
+  width: 100%;
+}
+.gchrome progress::-webkit-progress-bar {
+  background-color: gray;
+  height: 100%;
+  width: 100%;
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome progress::-webkit-progress-value {
+  background-color: green;
+  height: 100%;
+  width: 50%;
+  /* should be removed later */
+  -webkit-user-modify: read-only !important;
+  box-sizing: border-box;
+}
+.gchrome u,
+.gchrome ins {
+  text-decoration: underline;
+}
+.gchrome strong,
+.gchrome b {
+  font-weight: bold;
+}
+.gchrome i,
+.gchrome cite,
+.gchrome em,
+.gchrome var,
+.gchrome address,
+.gchrome dfn {
+  font-style: italic;
+}
+.gchrome tt,
+.gchrome code,
+.gchrome kbd,
+.gchrome samp {
+  font-family: monospace;
+}
+.gchrome pre,
+.gchrome xmp,
+.gchrome plaintext,
+.gchrome listing {
+  display: block;
+  font-family: monospace;
+  white-space: pre;
+  margin: 1 __qem 0;
+}
+.gchrome mark {
+  background-color: yellow;
+  color: black;
+}
+.gchrome big {
+  font-size: larger;
+}
+.gchrome small {
+  font-size: smaller;
+}
+.gchrome s,
+.gchrome strike,
+.gchrome del {
+  text-decoration: line-through;
+}
+.gchrome sub {
+  vertical-align: sub;
+  font-size: smaller;
+}
+.gchrome sup {
+  vertical-align: super;
+  font-size: smaller;
+}
+.gchrome nobr {
+  white-space: nowrap;
+}
+.gchrome :focus {
+  outline: auto 5px -webkit-focus-ring-color;
+}
+.gchrome html:focus,
+.gchrome body:focus,
+.gchrome input[readonly]:focus {
+  outline: none;
+}
+.gchrome applet:focus,
+.gchrome embed:focus,
+.gchrome iframe:focus,
+.gchrome object:focus {
+  outline: none;
+}
+.gchrome input:focus,
+.gchrome textarea:focus,
+.gchrome keygen:focus,
+.gchrome select:focus {
+  outline-offset: -2px;
+}
+.gchrome a:-webkit-any-link {
+  color: -webkit-link;
+  text-decoration: underline;
+  cursor: auto;
+}
+.gchrome a:-webkit-any-link:active {
+  color: -webkit-activelink;
+}
+.gchrome ruby,
+.gchrome rt {
+  text-indent: 0;
+  /* blocks used for ruby rendering should not trigger this */
+}
+.gchrome rt {
+  line-height: normal;
+  -webkit-text-emphasis: none;
+}
+.gchrome ruby > rt {
+  display: block;
+  font-size: 50%;
+  text-align: start;
+}
+.gchrome ruby > rp {
+  display: none;
+}
+.gchrome noframes {
+  display: none;
+}
+.gchrome frameset,
+.gchrome frame {
+  display: block;
+}
+.gchrome frameset {
+  border-color: inherit;
+}
+.gchrome iframe {
+  border: 2px inset;
+}
+.gchrome details {
+  display: block;
+}
+.gchrome summary {
+  display: block;
+}
+.gchrome summary::-webkit-details-marker {
+  display: inline-block;
+  width: 0.66em;
+  height: 0.66em;
+  -webkit-margin-end: 0.4em;
+}
+.gchrome template {
+  display: none;
+}
+.gchrome bdi,
+.gchrome output {
+  unicode-bidi: -webkit-isolate;
+}
+.gchrome bdo {
+  unicode-bidi: bidi-override;
+}
+@page {
+  size: auto;
+  margin: auto;
+  padding: 0px;
+  border-width: 0px;
+  
+  /* FIXME: Define the right default values for page properties. */
+}

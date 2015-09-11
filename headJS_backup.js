@@ -2,144 +2,181 @@ var jq = $.noConflict();
 
 var qPP = {};
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
-qPP.Signal = signals.Signal;
+qPP.signal = signals.Signal;
 
 jq(function () {
 	qPP.ogFormVisiblityStyle = jq('form').css('visibility');
 	jq('form').css('visibility', 'hidden');
 });
 
-var previewEDValueLocker, edEntityLocker, arbor; //the first two are only needed for non jfe mode
+
+var previewEDValueLocker, compEDFormulaLocker, edEntityLocker, iVars; //the first two are only needed for non jfe mode
 if (!qPP.engine.Page) {
 	if (!sessionStorage.previewEDValueLocker) {
 		previewEDValueLocker = {};
 	} else {
 		previewEDValueLocker = JSON.parse(sessionStorage.previewEDValueLocker);
 	}
-
-	if (!sessionStorage.arbor) {
-		arbor = {};
+	if (!sessionStorage.compEDFormulaLocker) {
+		compEDFormulaLocker = {};
 	} else {
-		arbor = JSON.parse(sessionStorage.arbor);
+		compEDFormulaLocker = JSON.parse(sessionStorage.compEDFormulaLocker);
 	}
+	if (!sessionStorage.iVars) {
+		iVars = {};
+	} else {
+		iVars = JSON.parse(sessionStorage.iVars);
+	}
+	edEntityLocker = { //note that session storage wont store blocks.observable
+		atom: {}, //atomic
+		comp: {} //composite ed
+	};
 
 } else {
-	arbor = arbor || {};
+	iVars = iVars || {};
+	compEDFormulaLocker = compEDFormulaLocker || {};
+	edEntityLocker = edEntityLocker || {
+		atom: {}, //ED contigent text
+		comp: {} //ED contigent link
+	};
 }
 
-edEntityLocker = {
-	computed: {},
-	compiled: function () {
-		qPP._disableCopyPaste();
-		if (qPP.engine.Page) {
-			qPP.engine.Page.once("ready:imagesLoaded", qPP._imagesReadyHandler);
-			qPP.engine.Page.setupImageLoadVerification();
-		}
-		qPP._makePageVisible();
-
-	}
-};
-
-qPP.windowLoadedSgn = new qPP.Signal();
-qPP.buttonsReadySgn = new qPP.Signal();
+qPP.windowLoadedSgn = new qPP.signal();
+qPP.pageReadySgn = new qPP.signal();
+qPP.buttonsReadySgn = new qPP.signal();
 qPP.buttonsReadySgn.memorize = true;
-qPP.mdCntZeroSgn = new qPP.Signal();
+qPP.mdCntZeroSgn = new qPP.signal();
 qPP.mdCntZeroSgn.memorize = true;
-qPP.pageVisibleSgn = new qPP.Signal();
-qPP.pageUnloadedSgn = new qPP.Signal();
+qPP.pageVisibleSgn = new qPP.signal();
 
 qPP.mdCnt = 0; //count the number of questions which have mdModeOn
 qPP.mdCntTouched = false;
 
-qPP.VM = null;
-
 qPP.edValueLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDValueLocker; //edLocker only stores snapshot of ED that can be used in flow or display logic
 
-if (!qPP.edValueLocker.formulae) {
-	qPP.edValueLocker.formulae = {};
-}
 
-
-qPP._isComputedED = function (typeTag) {
-	return /^comp(?=[A-Z]\w)/.test(typeTag);
+qPP._getEDType = function (typeTag) {
+	var pattern = /^[a-z]+(?=[.]\w)/;
+	if (!typeTag.match(pattern)) {
+		return false;
+	}
+	return typeTag.match(pattern).pop();
 };
 
-qPP._getEDRealtimeValue = function (typeTag) {
-	return qPP.VM.$get(typeTag);
+qPP._getEDTag = function (typeTag) {
+	return typeTag.replace(/^[a-z]+[.](?=\w)/, '');
 };
 
-qPP._getEDSnapshotValue = function (typeTag) {
+qPP._getEDValue = function (typeTag) {
 	return qPP.edValueLocker[typeTag];
 };
 
-qPP._setEDSnapshotValue = function (typeTag, val) {
+qPP._setEDValue = function (typeTag, val) {
 	qPP.edValueLocker[typeTag] = val;
 };
 
-qPP._preVMSetED = function (typeTag, edVal) { // pre means before VM instantiation
-	edEntityLocker.data[typeTag] = edVal;
-	qPP._setEDSnapshotValue(typeTag, edVal);
-};
-
-qPP._postVMSetED = function (typeTag, edVal) { // post means after VM instantiation
-	qPP.VM.$set(typeTag, edVal);
-	qPP._setEDSnapshotValue(typeTag, edVal);
-};
-
-qPP._convertFormulaToCompED = function (edTag, formula) {
-	edEntityLocker.computed[edTag] = function () {
-		return eval(formula);
+qPP._getEDEntity = function (type, tag) {
+	if (!edEntityLocker.hasOwnProperty(type)) {
+		return null;
+	} else if (!edEntityLocker[type].hasOwnProperty(tag)) {
+		return null;
+	} else {
+		return edEntityLocker[type][tag];
 	}
 };
 
-qPP._convertAllExistingFormulaeToCompEDs = function () { //called at the begnning of every page, if locker has new raw ED it will be changed to ED entity
-	jq.each(edEntityLocker.data.formulae, function (formulaTag, formula) {
-		qPP._convertFormulaToCompED(formulaTag, formula);
+qPP._setEDEntity = function (type, tag, edVal) {
+	if (!edEntityLocker[type].hasOwnProperty(tag)) {
+		edEntityLocker[type][tag] = blocks.observable(edVal); //this is creating
+	} else {
+		edEntityLocker[type][tag](edVal); //this is updating
+	}
+};
+
+qPP._entityfyRawEDValue = function (typeTag) {
+	// only typed ED can be upgraded
+	var type = qPP._getEDType(typeTag);
+	if (!type || !qPP.edValueLocker.hasOwnProperty(typeTag)) {
+		return;
+	}
+	var tag = qPP._getEDTag(typeTag);
+
+	if (edEntityLocker[type].hasOwnProperty(tag)) {
+		return; //only raw EDs that do not have beamer counterpart can be upgraded
+	}
+	qPP._setEDEntity(type, tag, qPP._getEDValue(typeTag));
+};
+
+
+qPP._entityfyAllRawEDValues = function () { //called at the begnning of every page, if locker has new raw ED it will be changed to ED entity
+	console.log('all existing raw EDs:', Object.keys(qPP.edValueLocker));
+	jq.each(qPP.edValueLocker, function (typeTag) {
+		qPP._entityfyRawEDValue(typeTag);
 	});
 };
 
-qPP.setED = function (edTag, edVal) {
-	if (qPP._isComputedED(edTag)) {
+
+qPP.setAtomED = function (typeTag, edVal) { //called by users to set their own EDs. it must be typed
+	var type = qPP._getEDType(typeTag);
+	if (!type) {
 		return;
 	}
-	if (!qPP.VM) {
-		qPP._preVMSetED(edTag, edVal);
-	} else {
-		qPP._prostVMSetED(edTag, edVal);
-	}
+	var tag = qPP._getEDTag(typeTag);
+	qPP._setEDValue(typeTag, edVal);
+	qPP._setEDEntity(type, tag, edVal);
 };
 
-qPP.getED = function (typeTag) {
-	if (!qPP.VM) {
-		return qPP._getEDSnapshotValue(typeTag);
-	}
-	return qPP._getEDRealtimeValue(typeTag);
-};
-
-qPP.saveRespAsED = function (q, typeTag) {
-	if (qPP._isComputedED(typeTag)) {
+qPP.getAtomED = function (typeTag) {
+	var type = qPP._getEDType(typeTag);
+	if (type !== 'atom') {
 		return;
 	}
+	var tag = qPP._getEDTag(typeTag);
+	return blocks.unwrap(qPP._getEDEntity(type, tag));
+};
+
+qPP.softSetAtomED = function (typeTag, edVal) { //set temporary beamable ED for block preview purpose
+	if (qPP.edValueLocker.hasOwnProperty(typeTag)) {
+		return;
+	}
+	qPP.setAtomED(typeTag, edVal);
+};
+
+qPP._registeredQs = {}; //this is for storing important question objects, with the next two functions, the user doesn't need to worry about this object.
+
+qPP.saveRespAsED = function (q, typeTag) { //ED means ED plus
+	//dynamically monitoring the answer which cannot be composite ED
+
+	if (!qPP._getEDType(typeTag)) {
+		return;
+	}
+
+	qPP._registeredQs[typeTag] = q;
+	//qPP.setAtomED(typeTag, qPP._getEDValue(typeTag) || null);
+	
 	var qId = "#" + q.questionId;
 	jq(qId).mouseleave(function () {
 		var resp = qPP.obtainQResp(q);
 		if (!resp) {
 			return;
 		}
-		qPP._postVMSetED(typeTag, resp); //this must happen post vm instantiation
+		qPP.setAtomED(typeTag, resp);
 	});
 
 };
 
-qPP._formalizeUserFormula = function (formula) {
-	var regPattern = /[a-z]\w+(?=[+*/=><\s\]\)-]+|$)/g;
+qPP._getCompEDFormula = function (formula) {
+	var regPattern = /[a-z]+[.]\w+(?=[^(]+|$|\s+)/g; //only facio ED are selected
 	var dependencyArray = formula.match(regPattern);
 	if (!dependencyArray) {
 		return null;
 	}
+
 	var dependencyValid = true;
 	jq.each(dependencyArray, function (idx, typeTag) {
-		if (typeof edEntityLocker.data[typeTag] === "undefined") {
+		var type = qPP._getEDType(typeTag);
+
+		if (!type || !edEntityLocker[type].hasOwnProperty(qPP._getEDTag(typeTag))) {
 			dependencyValid = false;
 			return false;
 		}
@@ -150,25 +187,53 @@ qPP._formalizeUserFormula = function (formula) {
 	}
 
 	formula = formula.replace(regPattern, function (typeTag) {
-		return 'this.' + typeTag;
+		return 'edEntityLocker["' + qPP._getEDType(typeTag) + '"]["' + qPP._getEDTag(typeTag) + '"]()';
 	});
-	console.log('formalized formula: ', formula);
+	console.log('formula: ', formula);
 	return formula;
 };
 
-qPP.setCompED = function (typeTag, userFormula) {
-	if (!qPP._isComputedED(typeTag)) {
+qPP.setCompED = function (typeTag, formula) {
+	var type = qPP._getEDType(typeTag);
+	if (type !== 'comp') {
+		return;
+	}
+	var tag = qPP._getEDTag(typeTag);
+	var rawFormula = formula;
+
+	formula = qPP._getCompEDFormula(rawFormula);
+
+	if (!formula) {
 		return;
 	}
 
-	var formula = qPP._formalizeUserFormula(userFormula);
-	if (!userFormula) {
-		return;
-	}
-
-	qPP.edValueLocker.formulae[typeTag] = formula;
-	edEntityLocker.data.formulae[typeTag] = formula;
+	compEDFormulaLocker[typeTag] = rawFormula;
+	jq('form').after('<div style="display:none;">{{' + typeTag + '}}</div>'); //an invisible element to force it to be evaluated
+	edEntityLocker.comp[tag] = blocks.observable(function () {
+		var newValue;
+		try {
+			newValue = eval(formula);
+		} catch (err) {
+			newValue = null;
+		}
+		qPP._setEDValue(typeTag, newValue);
+		return newValue;
+	});
+	
 };
+
+qPP._recoverAllEDEntities = function () { //this is for non jfe mode runtime
+	jq.each(qPP.edValueLocker, function (typeTag) {
+		var type = qPP._getEDType(typeTag);
+		if (type === 'atom') {
+			qPP._entityfyRawEDValue(typeTag);
+		} else if (type === 'comp') {
+			qPP.setCompED(typeTag, compEDFormulaLocker[typeTag]);
+		}
+
+	});
+};
+
 
 
 qPP.registerImgs = function (q, edTag) {
@@ -176,7 +241,7 @@ qPP.registerImgs = function (q, edTag) {
 	qPP.pageVisibleSgn.addOnce(function () {
 		urls = qPP._obtainQImgUrls(q);
 		for (var i = 0; i < urls.length; i++) {
-			qPP.setED(edTag + (i + 1), urls);
+			qPP.setAtomED(edTag + (i + 1), urls);
 		}
 	});
 };
@@ -196,62 +261,36 @@ qPP._imagesReadyHandler = function () {
 };
 
 qPP._internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
-	qPP._convertAllExistingFormulaeToCompEDs();
-	qPP.VM = new Vue(edEntityLocker);
-	jq('#NextButton').mouseenter(function () {
-		for (var edTag in qPP.VM) {
-			if (qPP._isComputedED(edTag)) {
-				qPP._setEDSnapshotValue(edTag, qPP.VM.$get(edTag));
-			}
-		}
-	});
+	qPP._entityfyAllRawEDValues();
+	qPP.pageReadySgn.dispatch();
 	qPP.buttonsReadySgn.dispatch();
-	qPP.mdCntZeroSgn.addOnce(function () {
-		qPP.VM.$mount(jq('form').get(0));
-	});
+	if (qPP.onPageReady) {
+		qPP.onPageReady();
+	}
+	qPP.mdCntZeroSgn.addOnce(qPP._renderPage);
 	if (!qPP.mdCntTouched) {
 		qPP.mdCntZeroSgn.dispatch();
 	};
 };
 
+qPP._renderPage = function () {
+	try {
+		blocks.query(edEntityLocker);
+	} catch (err) {
+		console.error("blocks.query rendering failed");
+	} finally {
+		qPP._disableCopyPaste();
+		if (qPP.engine.Page) {
+			qPP.engine.Page.once("ready:imagesLoaded", qPP._imagesReadyHandler);
+			qPP.engine.Page.setupImageLoadVerification();
+		}
+		qPP._makePageVisible();
+	}
+};
+
 qPP._makePageVisible = function () {
 	jq('form').css('visibility', qPP.ogFormVisiblityStyle);
 	qPP.pageVisibleSgn.dispatch();
-};
-
-qPP.makeValueTree = function () { //for creating json obj
-	var args = Array.prototype.slice.call(arguments);
-	if (args.length < 3) {
-		return null;
-	}
-	var rootname = args.shift();
-	var values = args.pop();
-	//	ars only contain nodes
-	if (typeof rootname !== 'string' || !Array.isArray(values)) {
-		return null;
-	}
-	var expectedValueCnt = args.reduce(function (preVal, curVal) {
-		return preVal * curVal.length;
-	}, 1);
-
-	if (expectedValueCnt !== values.length) {
-		return null;
-	}
-
-	function traverseTree(currentLevel, contextObj) {
-		if (currentLevel < args.length) {
-			args[currentLevel - 1].forEach(function (ele) {
-				this[ele] = {};
-				traverseTree(currentLevel + 1, this[ele]);
-			}, contextObj);
-		} else {
-			args[currentLevel - 1].forEach(function (ele) {
-				this[ele] = values.shift();
-			}, contextObj);
-		}
-	}
-	arbor[rootname] = {};
-	traverseTree(1, arbor[rootname]);
 };
 
 qPP.addTextEntryHints = function (q) {
@@ -313,22 +352,46 @@ qPP.hideButtons = function (time) { //time in seconds
 	});
 };
 
-qPP.enableMarkdownMode = function (q) {
+qPP.markdownMode = function (q, usrCallback) {
 	qPP.mdCnt++;
-	qPP.mdCntTouched = true;
-	var ele = jq('#' + q.questionId).find('.QuestionText');
+	if (!qPP.mdCntTouched) {
+		qPP.mdCntTouched = true;
+	}
+	var ele = jq('#' + q.questionId).find('.QuestionText')
+		.addClass('mdMode');
 	var mdTxt = ele.text().replace(/^\s*/, "");
-	ele.html('<div class="ht-bt mdMode"></div>');
 	marked(mdTxt, {
-		renderer: qPP.__mdRenderer
+		renderer: qPP.mdRenderer
 	}, function (err, htmlCode) {
-		ele.find('.mdMode').html(htmlCode);
+		ele.html(htmlCode);
+		usrCallback.apply(q);
 		setTimeout(function () {
 			qPP.mdCnt--;
 			if (qPP.mdCnt === 0) {
 				qPP.mdCntZeroSgn.dispatch();
 			}
 		}, 0)
+	});
+};
+
+qPP.mdModeOn = function (q) {
+	qPP.mdCnt++;
+	jq('#' + q.questionId).find('.QuestionText')
+		.addClass('ht-bt mdMode');
+};
+
+qPP._renderMD = function () {
+	var ele = jq('.ht-bt.mdMode').eq(--qPP.mdCnt);
+	var txt = ele.text().replace(/^\s*/, "");
+	marked(txt, {
+		renderer: qPP.mdRenderer
+	}, function (err, htmlCode) {
+		ele.html(htmlCode);
+		if (qPP.mdCnt > 0) {
+			qPP._renderMD();
+		} else {
+			qPP._renderPage();
+		}
 	});
 };
 
@@ -595,12 +658,14 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, fileW, fileH, scaleFac
 			jq('#Buttons').show();
 		}
 	};
+	console.log(mPlayerW, mPlayerH);
 	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, 'mediaPlayerContainer');
 	mPlayer.state.add('boot', bootState);
 	mPlayer.state.add('load', loadState);
 	mPlayer.state.add('play', playState);
 	mPlayer.state.add('end', endState);
 	mPlayer.state.start('boot');
+	console.log('try playing ' + mediaType);
 	qPP.hideButtons();
 
 
@@ -679,7 +744,9 @@ qPP.createAudioChecker = function (q, length) {
 			}
 
 		},
-		update: function () {},
+		update: function () {
+			//console.log(this.playBtnTxt.text);
+		},
 		tryPlayNext: function () {
 			this.playBtnTxt.text = "PLAYING";
 			this.playBtnTxt.fill = "#999";
@@ -711,6 +778,7 @@ qPP.createAudioChecker = function (q, length) {
 			this.playBtnTxt.fill = "#000";
 			this.playBtn.events
 				.onInputDown.addOnce(this.tryPlayNext.bind(this));
+			console.log('all digits played and the answer is: ', correctAnswer);
 		}
 
 	};
@@ -880,8 +948,8 @@ qPP._shuffleArray = function (array) {
 	return array;
 };
 
-qPP.__mdRenderer = new marked.Renderer();
-qPP.__mdRenderer.image = function (href, title, text) {
+qPP.mdRenderer = new marked.Renderer();
+qPP.mdRenderer.image = function (href, title, text) {
 	var src = 'src="' + href + '"';
 	var imgClass = text === 'center' ? 'class="center-block"' : '';
 	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
@@ -889,17 +957,9 @@ qPP.__mdRenderer.image = function (href, title, text) {
 };
 
 //non attribute definition code
-
-edEntityLocker.data = jq.extend(true, {}, qPP.edValueLocker);
-
-for (var edTag in edEntityLocker.data) {
-	if (qPP._isComputedED(edTag)) {
-		delete edEntityLocker.data[edTag]; //remove snapshot value of computed ed from VM data.
-	}
-}
-
 if (!qPP.engine.Page) {
 	qPP.windowLoadedSgn.add(qPP._internalPageReadyHandler);
+	qPP.windowLoadedSgn.add(qPP._recoverAllEDEntities, null, 4);
 	qPP.engine.addOnload = function (handler) {
 		if ($('body') && $('body').hasClassName('EditSection'))
 			return;
@@ -915,25 +975,13 @@ if (!qPP.engine.Page) {
 	qPP.engine.Page.once('ready', qPP._internalPageReadyHandler);
 }
 
-if (!qPP.engine.Page) {
+if (!qPP.engine.Page) { //this is for preview purpose
 	qPP.engine.addOnUnload(function () {
-		qPP.pageUnloadedSgn.dispatch();
-	});
-} else {
-	qPP.engine.Page.once('pageunload', function () {
-		qPP.pageUnloadedSgn.dispatch();
-	})
-}
-
-qPP.pageUnloadedSgn.add(function () {
-	console.log('page unloaded');
-	if (!qPP.engine.Page) {
 		sessionStorage.previewEDValueLocker = JSON.stringify(previewEDValueLocker);
-		sessionStorage.arbor = JSON.stringify(arbor);
-	}
-
-});
-
+		sessionStorage.compEDFormulaLocker = JSON.stringify(compEDFormulaLocker);
+		sessionStorage.iVars = JSON.stringify(iVars);
+	});
+}
 
 jq(window).load(function () {
 	qPP.windowLoadedSgn.dispatch();
