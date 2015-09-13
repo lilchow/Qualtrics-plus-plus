@@ -1,4 +1,5 @@
 var jq = $.noConflict();
+var ld = _.noConflict();
 
 var qPP = {};
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
@@ -285,16 +286,19 @@ qPP.decorateTextEntry = function (q, pre, post, width) {
 	}
 };
 
-qPP.decorateMultipleChoice = function (q, pre, post) {
+qPP.createLikertScale = function (q, begin, end, leftAnchor, rightAnchor) {
 	if (qPP._getQuestionType(q) === 'MC') {
 		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure tbody');
 		var topRow = choiceTbl.find('tr').first();
 		var lblRow = topRow.after("<tr>").next();
-		topRow.find('td').each(function () {
+
+		var topRowNumbers = ld.range(begin,end+1);
+		topRow.find('td').each(function (idx) {
+			jq(this).find('span label.SingleAnswer').html('<span class="ht-bt">'+topRowNumbers[idx]+'</span>');
 			lblRow.append('<td>&mdash;</td>');
 		});
-		lblRow.find('td').first().text(pre);
-		lblRow.find('td').last().text(post);
+		lblRow.find('td').first().html('<span class="ht-bt">'+leftAnchor+'</span>');
+		lblRow.find('td').last().html('<span class="ht-bt">'+rightAnchor+'</span>');
 	}
 };
 
@@ -618,7 +622,7 @@ qPP.createAudioChecker = function (q, length) {
 	}
 	markerStartPoints.pop();
 	markerStartPoints.unshift(0);
-	var chosenMarkerSet = qPP._shuffleArray(markerSet).slice(0, length);
+	var chosenMarkerSet = ld.shuffle(markerSet).slice(0, length);
 	var usedMarkerSet = [];
 	var correctAnswer = Number(chosenMarkerSet.join('')); //this is the answer participant should type in
 
@@ -733,7 +737,7 @@ qPP.createAudioChecker = function (q, length) {
 
 };
 
-qPP.createImageGrid = function (q, nCol, rowHeight, imgArray, baseUrl) {
+qPP.createImageGridFromUrls = function (q, nCol, imgHeight, imgArray, baseUrl) {
 	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
 		return;
 	}
@@ -778,7 +782,7 @@ qPP.createImageGrid = function (q, nCol, rowHeight, imgArray, baseUrl) {
 
 	gridContainer.find('.thumbnail .grid-img').each(function (idx) {
 		jq(this).css({
-			height: rowHeight + 'px',
+			height: imgHeight + 'px',
 			"background-image": 'url(' + imgArray[idx] + ')',
 			"background-repeat": "no-repeat",
 			"background-size": "contain",
@@ -787,6 +791,68 @@ qPP.createImageGrid = function (q, nCol, rowHeight, imgArray, baseUrl) {
 		});
 	});
 };
+
+qPP.createImageGridFromAtlas = function (q, nCol, imgHeight, imgArray) {
+	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
+		return;
+	}
+
+	var totalImgCnt = imgArray.length;
+	var nRow = Math.ceil(totalImgCnt / nCol);
+	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
+
+	var gridContainer;
+	if (!q.questionId) {
+		gridContainer = jq('.QuestionText');
+	} else {
+		gridContainer = jq("#" + q.questionId + ' .QuestionText');
+	}
+	gridContainer.addClass('ht-bt').append('<div class="well">');
+	gridContainer = gridContainer.find('.well');
+
+	for (var i = 0; i < nRow; i++) {
+		gridContainer.append(jq('<div class="row">'));
+	}
+
+	gridContainer.find('.row').each(function (idx) {
+		var nthRow = idx + 1;
+		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
+			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
+				jq('<div class="thumbnail">')
+				.append('<div class="grid-img-wrapper">')
+				.append('<div class="caption">')
+			);
+			jq(this).append(thumbnailWrapper);
+		}
+	});
+
+	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
+		var wrapper = jq(this).css({
+			height: imgHeight + 'px',
+			position: 'relative'
+		});
+		jq('<span style="display:block !important; position:absolute;">').addClass(imgArray[idx]).appendTo(wrapper);
+	});
+
+	gridContainer.find('.grid-img-wrapper span').each(function (idx) {
+		var img = jq(this);
+		var wrapper = img.parent();
+		var scaleFactor = Math.min(wrapper.width() / img.width(), imgHeight / img.height());
+		var imgW=img.width()*scaleFactor, imgH=img.height()*scaleFactor;
+		img.css({
+			transform: 'scale(' + scaleFactor + ')',
+			'-webkit-transform': 'scale(' + scaleFactor + ')',
+			'transform-origin': 'top left',
+			'-webkit-transform-origin': 'top left'
+		}).addClass('qPPAtlas')
+		.css({
+			left: (wrapper.width()-imgW)/2+'px',
+			top: (wrapper.height()-imgH)/2+'px'
+		});
+	});
+};
+
+
 //carousel related items
 qPP.__carouselItems = [];
 qPP.__carouselHeight = null;
@@ -865,20 +931,6 @@ qPP._makeCarouselBullets = function () {
 	return jq('<div u="navigator" class="jssorb14" style="bottom: 10px;">').append('<div u="prototype">');
 };
 
-//utility helper function
-qPP._shuffleArray = function (array) {
-	var currentIndex = array.length,
-		temporaryValue, randomIndex;
-	while (0 !== currentIndex) {
-		randomIndex = Math.floor(Math.random() * currentIndex);
-		currentIndex -= 1;
-		temporaryValue = array[currentIndex];
-		array[currentIndex] = array[randomIndex];
-		array[randomIndex] = temporaryValue;
-	}
-
-	return array;
-};
 
 qPP.__mdRenderer = new marked.Renderer();
 qPP.__mdRenderer.image = function (href, title, text) {
