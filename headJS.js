@@ -37,7 +37,7 @@ qPP._setUpSignals = function () {
 		if (!qPP.edSnapshotLocker.textureAtlas || qPP.edSnapshotLocker.textureAtlas.url) {
 			qPP.textureAtlasLoadedSgn.dispatch();
 		}
-		if (typeof qPP.__startupKey==='undefined') {
+		if (typeof qPP.__startupKey === 'undefined') {
 			qPP.blockReadySgn.dispatch();
 		}
 	}
@@ -190,6 +190,10 @@ qPP.saveRespAsED = function (q, typeTag) {
 		return;
 	}
 	var qId = "#" + q.questionId;
+	if (!vmSourceObj.data[typeTag]) {
+		qPP._preVMSetED(typeTag, '');
+	}
+
 	jq(qId).mouseleave(function () {
 		var resp = qPP.obtainQResp(q);
 		if (!resp) {
@@ -197,6 +201,11 @@ qPP.saveRespAsED = function (q, typeTag) {
 		}
 		qPP._postVMSetED(typeTag, resp); //this must happen post vm instantiation
 	});
+};
+
+qPP._fillInTextField = function (textField, content) { //textfield is pure dom element
+	bililiteRange(textField)
+		.bounds('selection').text(content, 'end').select();
 };
 
 qPP._parseUserFormula = function (formula) {
