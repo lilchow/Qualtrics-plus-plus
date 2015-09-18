@@ -2,20 +2,93 @@ var jq = $.noConflict();
 var ld = _.noConflict();
 
 var qPP = {};
+
+qPP.__mdRenderer = new marked.Renderer();
+qPP.__mdRenderer.image = function (href, title, text) {
+	var src = 'src="' + href + '"';
+	var imgClass = text === 'center' ? 'class="center-block"' : '';
+	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
+	return ['<img', src, imgClass, style, '>'].join(' ');
+};
+
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
 qPP.Signal = signals.Signal;
+qPP.CompSignal = signals.CompoundSignal;
 
-jq(function () {
-	qPP.ogFormVisiblityStyle = jq('form').css('visibility');
-	jq('form').css('visibility', 'hidden');
-});
+qPP._setUpSignals = function () {
+	qPP.textureAtlasLoadedSgn = new qPP.Signal();
+	qPP.blockReadySgn = new qPP.Signal();
+	qPP.qualtricsPageReadySgn = new qPP.Signal();
+	qPP.readyToConstructVMSgn = new qPP.CompSignal(qPP.qualtricsPageReadySgn, qPP.textureAtlasLoadedSgn, qPP.blockReadySgn);
+	qPP.readyToConstructVMSgn.add(qPP._constructPageVM);
+	qPP.pageVisibleSgn = new qPP.Signal();
+	jq(function () {
+		qPP.ogFormVisiblityStyle = jq('form').css('visibility');
+		jq('form').css('visibility', 'hidden');
+	});
 
-var previewEDValueLocker, edEntityLocker, arbor; //the first two are only needed for non jfe mode
-if (!qPP.engine.Page) {
-	if (!sessionStorage.previewEDValueLocker) {
-		previewEDValueLocker = {};
+	qPP.buttonsReadySgn = new qPP.Signal();
+	qPP.buttonsReadySgn.memorize = true;
+
+	qPP.windowLoadedSgn = new qPP.Signal();
+
+	function internalPageReadyHandler() {
+		qPP.qualtricsPageReadySgn.dispatch();
+		if (!qPP.edSnapshotLocker.textureAtlas || qPP.edSnapshotLocker.textureAtlas.url) {
+			qPP.textureAtlasLoadedSgn.dispatch();
+		}
+		if (typeof qPP.__startupKey==='undefined') {
+			qPP.blockReadySgn.dispatch();
+		}
+	}
+	jq(window).load(function () {
+		qPP.windowLoadedSgn.dispatch();
+	});
+	if (!qPP.engine.Page) {
+		qPP.engine.addOnload = function (handler) {
+			if ($('body') && $('body').hasClassName('EditSection'))
+				return;
+			try {
+				var obj = new Qualtrics.SurveyEngine.QuestionData();
+				obj.onload = handler;
+				qPP.windowLoadedSgn.add(obj.onload, obj, 2);
+			} catch (e) {
+				console.error('SE API Error: ' + e);
+			}
+		};
+		qPP.windowLoadedSgn.add(internalPageReadyHandler);
 	} else {
-		previewEDValueLocker = JSON.parse(sessionStorage.previewEDValueLocker);
+		qPP.engine.Page.once('ready', internalPageReadyHandler);
+	}
+
+	qPP.pageUnloadedSgn = new qPP.Signal();
+	if (!qPP.engine.Page) {
+		qPP.engine.addOnUnload(function () {
+			qPP.pageUnloadedSgn.dispatch();
+		});
+	} else {
+		qPP.engine.Page.once('pageunload', function () {
+			qPP.pageUnloadedSgn.dispatch();
+		})
+	}
+	qPP.pageUnloadedSgn.add(function () {
+		qPP.VM.$destroy();
+		console.log('page unloaded');
+		if (!qPP.engine.Page) {
+			sessionStorage.subRuntimeED = JSON.stringify(subRuntimeED);
+			sessionStorage.arbor = JSON.stringify(arbor);
+		}
+
+	});
+
+};
+
+var subRuntimeED, vmSourceObj, arbor; //the first two are only needed for non jfe mode
+if (!qPP.engine.Page) {
+	if (!sessionStorage.subRuntimeED) {
+		subRuntimeED = {};
+	} else {
+		subRuntimeED = JSON.parse(sessionStorage.subRuntimeED);
 	}
 
 	if (!sessionStorage.arbor) {
@@ -28,57 +101,52 @@ if (!qPP.engine.Page) {
 	arbor = arbor || {};
 }
 
-edEntityLocker = {
+qPP.edSnapshotLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : subRuntimeED; //edLocker only stores snapshot of ED that can be used in flow or display logic
+if (!qPP.edSnapshotLocker.formulae) {
+	qPP.edSnapshotLocker.formulae = {};
+}
+vmSourceObj = {
 	computed: {},
 	compiled: function () {
-		qPP._disableCopyPaste();
+
+	},
+	ready: function () {
 		if (qPP.engine.Page) {
 			qPP.engine.Page.once("ready:imagesLoaded", qPP._imagesReadyHandler);
 			qPP.engine.Page.setupImageLoadVerification();
 		}
+		qPP._disableCopyPaste();
+		qPP.buttonsReadySgn.dispatch();
 		qPP._makePageVisible();
-
 	}
 };
-
-qPP.windowLoadedSgn = new qPP.Signal();
-qPP.buttonsReadySgn = new qPP.Signal();
-qPP.buttonsReadySgn.memorize = true;
-qPP.mdCntZeroSgn = new qPP.Signal();
-qPP.mdCntZeroSgn.memorize = true;
-qPP.pageVisibleSgn = new qPP.Signal();
-qPP.pageUnloadedSgn = new qPP.Signal();
-
-qPP.mdCnt = 0; //count the number of questions which have mdModeOn
-qPP.mdCntTouched = false;
-
-qPP.VM = null;
-
-qPP.edValueLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : previewEDValueLocker; //edLocker only stores snapshot of ED that can be used in flow or display logic
-
-if (!qPP.edValueLocker.formulae) {
-	qPP.edValueLocker.formulae = {};
-}
 
 
 qPP._isComputedED = function (typeTag) {
 	return /^comp(?=[A-Z]\w)/.test(typeTag);
 };
 
+vmSourceObj.data = jq.extend(true, {}, qPP.edSnapshotLocker);
+for (var edTag in vmSourceObj.data) {
+	if (qPP._isComputedED(edTag)) {
+		delete vmSourceObj.data[edTag]; //remove snapshot value of computed ed from VM data.
+	}
+}
+
 qPP._getEDRealtimeValue = function (typeTag) {
 	return qPP.VM.$get(typeTag);
 };
 
 qPP._getEDSnapshotValue = function (typeTag) {
-	return qPP.edValueLocker[typeTag];
+	return qPP.edSnapshotLocker[typeTag];
 };
 
 qPP._setEDSnapshotValue = function (typeTag, val) {
-	qPP.edValueLocker[typeTag] = val;
+	qPP.edSnapshotLocker[typeTag] = val;
 };
 
 qPP._preVMSetED = function (typeTag, edVal) { // pre means before VM instantiation
-	edEntityLocker.data[typeTag] = edVal;
+	vmSourceObj.data[typeTag] = edVal;
 	qPP._setEDSnapshotValue(typeTag, edVal);
 };
 
@@ -88,13 +156,13 @@ qPP._postVMSetED = function (typeTag, edVal) { // post means after VM instantiat
 };
 
 qPP._convertFormulaToCompED = function (edTag, formula) {
-	edEntityLocker.computed[edTag] = function () {
+	vmSourceObj.computed[edTag] = function () {
 		return eval(formula);
 	}
 };
 
 qPP._convertAllExistingFormulaeToCompEDs = function () { //called at the begnning of every page, if locker has new raw ED it will be changed to ED entity
-	jq.each(edEntityLocker.data.formulae, function (formulaTag, formula) {
+	jq.each(vmSourceObj.data.formulae, function (formulaTag, formula) {
 		qPP._convertFormulaToCompED(formulaTag, formula);
 	});
 };
@@ -129,10 +197,9 @@ qPP.saveRespAsED = function (q, typeTag) {
 		}
 		qPP._postVMSetED(typeTag, resp); //this must happen post vm instantiation
 	});
-
 };
 
-qPP._formalizeUserFormula = function (formula) {
+qPP._parseUserFormula = function (formula) {
 	var regPattern = /[a-z]\w+(?=[+*/=><\s\]\)-]+|$)/g;
 	var dependencyArray = formula.match(regPattern);
 	if (!dependencyArray) {
@@ -140,7 +207,7 @@ qPP._formalizeUserFormula = function (formula) {
 	}
 	var dependencyValid = true;
 	jq.each(dependencyArray, function (idx, typeTag) {
-		if (typeof edEntityLocker.data[typeTag] === "undefined") {
+		if (typeof vmSourceObj.data[typeTag] === "undefined") {
 			dependencyValid = false;
 			return false;
 		}
@@ -162,43 +229,24 @@ qPP.setCompED = function (typeTag, userFormula) {
 		return;
 	}
 
-	var formula = qPP._formalizeUserFormula(userFormula);
+	var formula = qPP._parseUserFormula(userFormula);
 	if (!userFormula) {
 		return;
 	}
 
-	qPP.edValueLocker.formulae[typeTag] = formula;
-	edEntityLocker.data.formulae[typeTag] = formula;
-};
-
-
-qPP.registerImgs = function (q, edTag) {
-	var urls;
-	qPP.pageVisibleSgn.addOnce(function () {
-		urls = qPP._obtainQImgUrls(q);
-		for (var i = 0; i < urls.length; i++) {
-			qPP.setED(edTag + (i + 1), urls);
-		}
-	});
-};
-
-qPP._obtainQImgUrls = function (q) {
-	var imgs = jq('#' + q.questionId)
-		.find('.QuestionText').find('img');
-	var urls = [];
-	imgs.each(function () {
-		urls.push(jq(this).attr('src'));
-	});
-	return urls;
+	qPP.edSnapshotLocker.formulae[typeTag] = formula;
+	vmSourceObj.data.formulae[typeTag] = formula;
 };
 
 qPP._imagesReadyHandler = function () {
 	console.log('images loaded!')
 };
 
-qPP._internalPageReadyHandler = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
+qPP._constructPageVM = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
+	console.log('construct vm');
 	qPP._convertAllExistingFormulaeToCompEDs();
-	qPP.VM = new Vue(edEntityLocker);
+	qPP.VM = null;
+	qPP.VM = new Vue(vmSourceObj);
 	jq('#NextButton').mouseenter(function () {
 		for (var edTag in qPP.VM) {
 			if (qPP._isComputedED(edTag)) {
@@ -206,13 +254,7 @@ qPP._internalPageReadyHandler = function () { //this is the internal page ready 
 			}
 		}
 	});
-	qPP.buttonsReadySgn.dispatch();
-	qPP.mdCntZeroSgn.addOnce(function () {
-		qPP.VM.$mount(jq('form').get(0));
-	});
-	if (!qPP.mdCntTouched) {
-		qPP.mdCntZeroSgn.dispatch();
-	};
+	qPP.VM.$mount(jq('form').get(0));
 };
 
 qPP._makePageVisible = function () {
@@ -272,6 +314,24 @@ qPP.addTextEntryHints = function (q) {
 	});
 };
 
+qPP.createImageAtlas = function (q, picLink, jsonLink) {
+	qPP.edSnapshotLocker.textureAtlas = {};
+	var textAtlasImg = new Image(200, 100);
+	textAtlasImg.src = picLink;
+	jq(textAtlasImg).appendTo(jq('#' + q.questionId).find('.QuestionText'));
+
+	jq.getJSON(jsonLink, function (json) {
+		qPP.edSnapshotLocker.textureAtlas.url = picLink;
+		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
+		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
+		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
+			.mapKeys(function (value, key) {
+				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
+			}).mapValues('frame').value();
+		qPP.textureAtlasLoadedSgn.dispatch();
+	})
+};
+
 
 qPP.decorateTextEntry = function (q, pre, post, width) {
 	if (!width) {
@@ -292,13 +352,13 @@ qPP.createLikertScale = function (q, begin, end, leftAnchor, rightAnchor) {
 		var topRow = choiceTbl.find('tr').first();
 		var lblRow = topRow.after("<tr>").next();
 
-		var topRowNumbers = ld.range(begin,end+1);
+		var topRowNumbers = ld.range(begin, end + 1);
 		topRow.find('td').each(function (idx) {
-			jq(this).find('span label.SingleAnswer').html('<span class="ht-bt">'+topRowNumbers[idx]+'</span>');
+			jq(this).find('span label.SingleAnswer').html('<span class="ht-bt">' + topRowNumbers[idx] + '</span>');
 			lblRow.append('<td>&mdash;</td>');
 		});
-		lblRow.find('td').first().html('<span class="ht-bt">'+leftAnchor+'</span>');
-		lblRow.find('td').last().html('<span class="ht-bt">'+rightAnchor+'</span>');
+		lblRow.find('td').first().html('<span class="ht-bt">' + leftAnchor + '</span>');
+		lblRow.find('td').last().html('<span class="ht-bt">' + rightAnchor + '</span>');
 	}
 };
 
@@ -318,22 +378,13 @@ qPP.hideButtons = function (time) { //time in seconds
 };
 
 qPP.enableMarkdownMode = function (q) {
-	qPP.mdCnt++;
-	qPP.mdCntTouched = true;
 	var ele = jq('#' + q.questionId).find('.QuestionText');
 	var mdTxt = ele.text().replace(/^\s*/, "");
 	ele.html('<div class="ht-bt mdMode"></div>');
-	marked(mdTxt, {
-		renderer: qPP.__mdRenderer
-	}, function (err, htmlCode) {
-		ele.find('.mdMode').html(htmlCode);
-		setTimeout(function () {
-			qPP.mdCnt--;
-			if (qPP.mdCnt === 0) {
-				qPP.mdCntZeroSgn.dispatch();
-			}
-		}, 0)
-	});
+	ele.find('.mdMode')
+		.html(marked(mdTxt, {
+			renderer: qPP.__mdRenderer
+		}));
 };
 
 qPP._disableCopyPaste = function () {
@@ -792,66 +843,6 @@ qPP.createImageGridFromUrls = function (q, nCol, imgHeight, imgArray, baseUrl) {
 	});
 };
 
-qPP.createImageGridFromAtlas = function (q, nCol, imgHeight, imgArray) {
-	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
-		return;
-	}
-
-	var totalImgCnt = imgArray.length;
-	var nRow = Math.ceil(totalImgCnt / nCol);
-	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
-
-	var gridContainer;
-	if (!q.questionId) {
-		gridContainer = jq('.QuestionText');
-	} else {
-		gridContainer = jq("#" + q.questionId + ' .QuestionText');
-	}
-	gridContainer.addClass('ht-bt').append('<div class="well">');
-	gridContainer = gridContainer.find('.well');
-
-	for (var i = 0; i < nRow; i++) {
-		gridContainer.append(jq('<div class="row">'));
-	}
-
-	gridContainer.find('.row').each(function (idx) {
-		var nthRow = idx + 1;
-		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
-			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
-				jq('<div class="thumbnail">')
-				.append('<div class="grid-img-wrapper">')
-				.append('<div class="caption">')
-			);
-			jq(this).append(thumbnailWrapper);
-		}
-	});
-
-	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
-		var wrapper = jq(this).css({
-			height: imgHeight + 'px',
-			position: 'relative'
-		});
-		jq('<span style="display:block !important; position:absolute;">').addClass(imgArray[idx]).appendTo(wrapper);
-	});
-
-	gridContainer.find('.grid-img-wrapper span').each(function (idx) {
-		var img = jq(this);
-		var wrapper = img.parent();
-		var scaleFactor = Math.min(wrapper.width() / img.width(), imgHeight / img.height());
-		var imgW=img.width()*scaleFactor, imgH=img.height()*scaleFactor;
-		img.css({
-			transform: 'scale(' + scaleFactor + ')',
-			'-webkit-transform': 'scale(' + scaleFactor + ')',
-			'transform-origin': 'top left',
-			'-webkit-transform-origin': 'top left'
-		}).addClass('qPPAtlas')
-		.css({
-			left: (wrapper.width()-imgW)/2+'px',
-			top: (wrapper.height()-imgH)/2+'px'
-		});
-	});
-};
-
 
 //carousel related items
 qPP.__carouselItems = [];
@@ -931,62 +922,4 @@ qPP._makeCarouselBullets = function () {
 	return jq('<div u="navigator" class="jssorb14" style="bottom: 10px;">').append('<div u="prototype">');
 };
 
-
-qPP.__mdRenderer = new marked.Renderer();
-qPP.__mdRenderer.image = function (href, title, text) {
-	var src = 'src="' + href + '"';
-	var imgClass = text === 'center' ? 'class="center-block"' : '';
-	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
-	return ['<img', src, imgClass, style, '>'].join(' ');
-};
-
-//non attribute definition code
-
-edEntityLocker.data = jq.extend(true, {}, qPP.edValueLocker);
-
-for (var edTag in edEntityLocker.data) {
-	if (qPP._isComputedED(edTag)) {
-		delete edEntityLocker.data[edTag]; //remove snapshot value of computed ed from VM data.
-	}
-}
-
-if (!qPP.engine.Page) {
-	qPP.windowLoadedSgn.add(qPP._internalPageReadyHandler);
-	qPP.engine.addOnload = function (handler) {
-		if ($('body') && $('body').hasClassName('EditSection'))
-			return;
-		try {
-			var obj = new Qualtrics.SurveyEngine.QuestionData();
-			obj.onload = handler;
-			qPP.windowLoadedSgn.add(obj.onload, obj, 2);
-		} catch (e) {
-			console.error('SE API Error: ' + e);
-		}
-	};
-} else {
-	qPP.engine.Page.once('ready', qPP._internalPageReadyHandler);
-}
-
-if (!qPP.engine.Page) {
-	qPP.engine.addOnUnload(function () {
-		qPP.pageUnloadedSgn.dispatch();
-	});
-} else {
-	qPP.engine.Page.once('pageunload', function () {
-		qPP.pageUnloadedSgn.dispatch();
-	})
-}
-
-qPP.pageUnloadedSgn.add(function () {
-	console.log('page unloaded');
-	if (!qPP.engine.Page) {
-		sessionStorage.previewEDValueLocker = JSON.stringify(previewEDValueLocker);
-		sessionStorage.arbor = JSON.stringify(arbor);
-	}
-
-});
-
-
-jq(window).load(function () {
-	qPP.windowLoadedSgn.dispatch();
-});
+qPP._setUpSignals();
