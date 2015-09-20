@@ -8,6 +8,9 @@ To use Qualtrics++ could not be easier. Click on this [link](https://raw.githubu
 
 ![screenshot](https://raw.githubusercontent.com/lilchow/Qualtrics-plus-plus/master/commonAssets/screenshot.jpg)
 
+Let's have a look at a super cool feature of `Qualtrics++`. With a few clicks of button, you will be able to use Markdown to format your question text, which is a huge time saver. Check out the GIF demo below to see what you can do with it.
+![qualtrics x markdown](https://raw.githubusercontent.com/lilchow/Qualtrics-plus-plus/master/commonAssets/Animation%200.gif)
+
 A more polished documentation will be up soon. But for now, please refer to this [powerpoint file](https://dl.dropboxusercontent.com/u/3493773/Qualtrics%2B%2B.pptx) if you want to give it a spin. Please refer to the links below for more useful resources on how to conduct psych experiments in Qualtrics.
 
 ## Resources
