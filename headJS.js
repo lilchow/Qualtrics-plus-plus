@@ -4,11 +4,27 @@ var ld = _.noConflict();
 var qPP = {};
 
 qPP.__mdRenderer = new marked.Renderer();
+qPP.__mdRenderer.link = function (href, title, text) {
+	var spec = href + '|' + text;
+	return '<urlimg specs="' + spec + '">url image:' + spec + '</urlimg>';
+};
+
 qPP.__mdRenderer.image = function (href, title, text) {
-	var src = 'src="' + href + '"';
-	var imgClass = text === 'center' ? 'class="center-block"' : '';
-	var style = ['style="', "width: ", title, "px;", "height: auto;", "display: block;", '"'].join('');
-	return ['<img', src, imgClass, style, '>'].join(' ');
+	var spec = href + '|' + text;
+	return '<atlasimg specs="' + spec + '">atlas image:' + spec + '</atlasimg>';
+};
+
+qPP.__mdRenderer.del = function (text) {
+	return '<u>' + text + '</u>';
+};
+
+qPP.__mdRenderer.codespan=function(text){
+	var arr=text.split('::');
+	var color='yellow';
+	if (arr.length===2){
+		color=arr.pop();
+	};
+	return '<span style="background-color:'+color+'">'+arr.pop()+'</span>';
 };
 
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
@@ -203,7 +219,7 @@ qPP.saveRespAsED = function (q, typeTag) {
 	});
 };
 
-qPP._fillInTextField = function (textField, content) { //textfield is pure dom element
+qPP._writeTextField = function (textField, content) { //textfield is pure dom element
 	bililiteRange(textField)
 		.bounds('selection').text(content, 'end').select();
 };
@@ -358,11 +374,11 @@ qPP.decorateTextEntry = function (q, pre, post, width) {
 qPP.createLikertScale = function (q, begin, end, leftAnchor, rightAnchor) {
 	if (qPP._getQuestionType(q) === 'MC') {
 		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure tbody');
-		var topRow = choiceTbl.find('tr').first();
-		var lblRow = topRow.after("<tr>").next();
+		var controlRow = choiceTbl.find('tr').last();
+		var lblRow = controlRow.after("<tr>").next();
 
 		var topRowNumbers = ld.range(begin, end + 1);
-		topRow.find('td').each(function (idx) {
+		choiceTbl.find('tr').first().find('td').each(function (idx) {
 			jq(this).find('span label.SingleAnswer').html('<span class="ht-bt">' + topRowNumbers[idx] + '</span>');
 			lblRow.append('<td>&mdash;</td>');
 		});
@@ -386,12 +402,11 @@ qPP.hideButtons = function (time) { //time in seconds
 	});
 };
 
-qPP.enableMarkdownMode = function (q) {
-	var ele = jq('#' + q.questionId).find('.QuestionText');
+qPP.enableMarkdown = function (q) {
+	var ele = jq('#' + q.questionId)
+		.find('.QuestionText').addClass('ht-bt mdMode');
 	var mdTxt = ele.text().replace(/^\s*/, "");
-	ele.html('<div class="ht-bt mdMode"></div>');
-	ele.find('.mdMode')
-		.html(marked(mdTxt, {
+	ele.html(marked(mdTxt, {
 			renderer: qPP.__mdRenderer
 		}));
 };
