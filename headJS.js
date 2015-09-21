@@ -489,8 +489,8 @@ qPP.obtainQResp = function (q) {
 	return resp;
 };
 
-qPP.createVideoPlayer = function (q, url, videoW, videoH, scaleFactor) {
-	qPP._createMediaPlayer(q, 'video', url, videoW, videoH, scaleFactor);
+qPP.createVideoPlayer = function (q, url, playerW, playerH) {
+	qPP._createMediaPlayer(q, 'video', url, playerW, playerH);
 };
 
 
@@ -508,7 +508,7 @@ qPP._createMediaPlayerContainer = function (q) {
 	containerParent.addClass('ht-bt').append('<div id="mediaPlayerContainer" class="center-block text-center"></div>');
 };
 
-qPP._createMediaPlayer = function (q, mediaType, fileUrl, fileW, fileH, scaleFactor) {
+qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH) {
 	qPP._createMediaPlayerContainer(q);
 
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
@@ -517,8 +517,8 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, fileW, fileH, scaleFac
 		mPlayerH = 50,
 		mPlayerHPadding = 18;
 	if (mediaType === 'video') { //this is for video player
-		mPlayerW = scaleFactor * fileW;
-		mPlayerH = scaleFactor * fileH;
+		mPlayerW = containerW;
+		mPlayerH = containerH;
 	}
 
 	var statusMsg;
@@ -580,10 +580,11 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, fileW, fileH, scaleFac
 
 			this.media = mPlayer.add[mediaType](mediaType);
 			this.media.volume = 0.5;
+			var scaleFactor = Math.min(mPlayerW / this.media.width, mPlayerH / this.media.height);
 			if (mediaType === 'video') {
 				this.media.paused = true;
 				this.media.onComplete.add(this.onMediaComplete, this);
-				this.videoSprite = this.media.addToWorld(0, 0, 0, 0, scaleFactor, scaleFactor);
+				this.videoSprite = this.media.addToWorld(mPlayerW/2, mPlayerH/2, 0.5, 0.5, scaleFactor, scaleFactor);
 				this.addTogglePlayBtn();
 			} else {
 				this.audioSprite = mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, "pre-processing audio", {
