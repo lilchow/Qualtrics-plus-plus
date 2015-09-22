@@ -388,6 +388,7 @@ qPP.makeValueTree = function () { //for creating json obj
 	traverseTree(1, arbor[rootname]);
 };
 
+//Form elements modifications:
 qPP.addTextEntryHints = function (q) {
 	if (qPP._getQuestionType(q) !== 'TE' || arguments.length < 2) {
 		return;
@@ -402,79 +403,6 @@ qPP.addTextEntryHints = function (q) {
 			hint = '';
 		}
 		jq(this).attr("placeholder", hint);
-	});
-};
-
-qPP.createImageAtlas = function (q, picLink, jsonLink) {
-	qPP.edSnapshotLocker.textureAtlas = {};
-	var loadQueue = new createjs.LoadQueue(false);
-	loadQueue.addEventListener("complete", handlePreloadComplete);
-	loadQueue.loadFile({
-		id: "atlasImg",
-		src: picLink
-	});
-	loadQueue.loadFile({
-		id: "atlasHash",
-		src: jsonLink
-	});
-
-	function handlePreloadComplete(evt) {
-		var json = evt.target.getResult('atlasHash');
-		processJson(json);
-	}
-
-	function processJson(json) {
-		qPP.edSnapshotLocker.textureAtlas.url = picLink;
-		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
-		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
-		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
-			.mapKeys(function (value, key) {
-				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
-			}).mapValues('frame').value();
-		qPP.textureAtlasLoadedSgn.dispatch();
-	}
-};
-
-qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
-	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
-		return;
-	}
-
-	var totalImgCnt = imgArray.length;
-	var nRow = Math.ceil(totalImgCnt / nCol);
-	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
-
-	var gridContainer;
-	if (!q.questionId) {
-		gridContainer = jq('.QuestionText');
-	} else {
-		gridContainer = jq("#" + q.questionId + ' .QuestionText');
-	}
-	gridContainer.addClass('ht-bt').append('<div class="well">');
-	gridContainer = gridContainer.find('.well');
-
-	for (var i = 0; i < nRow; i++) {
-		gridContainer.append(jq('<div class="row">'));
-	}
-
-	gridContainer.find('.row').each(function (idx) {
-		var nthRow = idx + 1;
-		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
-			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
-				jq('<div class="thumbnail">')
-				.append('<div class="grid-img-wrapper">')
-				.append('<div class="caption">')
-			);
-			jq(this).append(thumbnailWrapper);
-		}
-	});
-
-	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
-		var wrapper = jq(this).css({
-			height: imgHeight + 'px'
-		});
-		var wrapperW = wrapper.width();
-		wrapper.append('<atlasimg specs="' + imgArray[idx] + '|' + wrapperW + '|' + imgHeight + '"></atlasimg>');
 	});
 };
 
@@ -555,6 +483,30 @@ qPP.createLikertScale = function (q, leftAnchor, rightAnchor, poleCnt) {
 	}
 };
 
+qPP.createDopeLikertScale = function (q, leftAnchor, rightAnchor, min, max, width) {
+	if (!width) {
+		width = 300;
+	}
+	var input = jq("#" + q.questionId)
+		.find('.ChoiceStructure').addClass('ht-bt')
+		.find('input.InputText')
+		.css('display', 'inline');
+	input.wrapAll('<div class="well" style="background-color:#cfcfcf !important"/>');
+	input.before('<label style="padding-right:12px !important">' + leftAnchor + "</label>")
+		.after('<label style="padding-left:12px !important">' + rightAnchor + "</label>")
+		.width(width + 'px');
+
+	input.slider({
+		step: 1,
+		value:min-1,
+		tooltip: 'hide',
+		ticks: ld.range(min, max + 1),
+		ticks_labels: ld.range(min, max + 1)
+	});
+};
+
+
+
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
 		qPP.buttonsReadySgn.halt();
@@ -568,6 +520,84 @@ qPP.hideButtons = function (time) { //time in seconds
 		}, time * 1000);
 	});
 };
+
+qPP.createImageAtlas = function (q, picLink, jsonLink) {
+	qPP.edSnapshotLocker.textureAtlas = {};
+	var loadQueue = new createjs.LoadQueue(false);
+	loadQueue.addEventListener("complete", handlePreloadComplete);
+	loadQueue.loadFile({
+		id: "atlasImg",
+		src: picLink
+	});
+	loadQueue.loadFile({
+		id: "atlasHash",
+		src: jsonLink
+	});
+
+	function handlePreloadComplete(evt) {
+		var json = evt.target.getResult('atlasHash');
+		processJson(json);
+	}
+
+	function processJson(json) {
+		qPP.edSnapshotLocker.textureAtlas.url = picLink;
+		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
+		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
+		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
+			.mapKeys(function (value, key) {
+				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
+			}).mapValues('frame').value();
+		qPP.textureAtlasLoadedSgn.dispatch();
+	}
+};
+
+qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
+	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
+		return;
+	}
+
+	var totalImgCnt = imgArray.length;
+	var nRow = Math.ceil(totalImgCnt / nCol);
+	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
+
+	var gridContainer;
+	if (!q.questionId) {
+		gridContainer = jq('.QuestionText');
+	} else {
+		gridContainer = jq("#" + q.questionId + ' .QuestionText');
+	}
+	gridContainer.addClass('ht-bt').append('<div class="well">');
+	gridContainer = gridContainer.find('.well');
+
+	for (var i = 0; i < nRow; i++) {
+		gridContainer.append(jq('<div class="row">'));
+	}
+
+	gridContainer.find('.row').each(function (idx) {
+		var nthRow = idx + 1;
+		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
+			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
+				jq('<div class="thumbnail">')
+				.append('<div class="grid-img-wrapper">')
+				.append('<div class="caption">')
+			);
+			jq(this).append(thumbnailWrapper);
+		}
+	});
+
+	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
+		var wrapper = jq(this).css({
+			height: imgHeight + 'px'
+		});
+		var wrapperW = wrapper.width();
+		wrapper.append('<atlasimg specs="' + imgArray[idx] + '|' + wrapperW + '|' + imgHeight + '"></atlasimg>');
+	});
+};
+
+
+
+
+
 
 qPP.enableMarkdown = function (q) {
 	var ele = jq('#' + q.questionId)
