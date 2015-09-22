@@ -1,23 +1,20 @@
 var jq = $.noConflict();
 var ld = _.noConflict();
-
 var qPP = {};
 
+//customize marked.js markdown renderer options
 qPP.__mdRenderer = new marked.Renderer();
 qPP.__mdRenderer.link = function (href, title, text) {
 	var spec = href + '|' + text;
 	return '<urlimg specs="' + spec + '">url image:' + spec + '</urlimg>';
 };
-
 qPP.__mdRenderer.image = function (href, title, text) {
 	var spec = href + '|' + text;
 	return '<atlasimg specs="' + spec + '">atlas image:' + spec + '</atlasimg>';
 };
-
 qPP.__mdRenderer.del = function (text) {
 	return '<u>' + text + '</u>';
 };
-
 qPP.__mdRenderer.codespan = function (text) {
 	var arr = text.split('::');
 	var color = 'yellow';
@@ -27,6 +24,7 @@ qPP.__mdRenderer.codespan = function (text) {
 	return '<span style="background-color:' + color + '">' + arr.pop() + '</span>';
 };
 
+//add Vue.js components
 if (!Vue.component('atlasimg')) {
 	Vue.component('atlasimg', {
 		props: ['specs'], //specs looks like this atlasKey|imgWidth
@@ -74,7 +72,6 @@ if (!Vue.component('atlasimg')) {
 
 	});
 }
-
 if (!Vue.component('urlimg')) {
 	Vue.component('urlimg', {
 		props: ['specs'], //specs looks like this atlasKey|imgWidth
