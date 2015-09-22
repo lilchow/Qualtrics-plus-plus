@@ -18,14 +18,87 @@ qPP.__mdRenderer.del = function (text) {
 	return '<u>' + text + '</u>';
 };
 
-qPP.__mdRenderer.codespan=function(text){
-	var arr=text.split('::');
-	var color='yellow';
-	if (arr.length===2){
-		color=arr.pop();
+qPP.__mdRenderer.codespan = function (text) {
+	var arr = text.split('::');
+	var color = 'yellow';
+	if (arr.length === 2) {
+		color = arr.pop();
 	};
-	return '<span style="background-color:'+color+'">'+arr.pop()+'</span>';
+	return '<span style="background-color:' + color + '">' + arr.pop() + '</span>';
 };
+
+if (!Vue.component('atlasimg')) {
+	Vue.component('atlasimg', {
+		props: ['specs'], //specs looks like this atlasKey|imgWidth
+		data: function () {
+			return {
+				specs: null
+			};
+		},
+		computed: {
+			atlas: function () {
+				return this.$parent.textureAtlas;
+			},
+			name: function () {
+				return this.specs.split('|')[0];
+			},
+			canvasW: function () {
+				return this.specs.split('|')[1];
+			},
+			canvasH: function () {
+				return this.specs.split('|')[2];
+			},
+			frame: function () {
+				return this.atlas.frames[this.name];
+			},
+			scalar: function () {
+				return Math.min(this.canvasW / this.frame.w, this.canvasH / this.frame.h);
+			},
+			width: function () {
+				return this.scalar * this.frame.w + 'px';
+			},
+			height: function () {
+				return this.scalar * this.frame.h + 'px';
+			},
+			bgUrl: function () {
+				return 'url("' + this.atlas.url + '")';
+			},
+			bgSize: function () {
+				return (this.atlas.width * this.scalar) + 'px' + ' ' + (this.atlas.height * this.scalar) + 'px';
+			},
+			bgPosition: function () {
+				return (-this.frame.x * this.scalar) + 'px ' + (-this.frame.y * this.scalar) + 'px';
+			}
+		},
+		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:width,height:height,backgroundImage:bgUrl,backgroundSize:bgSize,backgroundPosition:bgPosition"></span>'
+
+	});
+}
+
+if (!Vue.component('urlimg')) {
+	Vue.component('urlimg', {
+		props: ['specs'], //specs looks like this atlasKey|imgWidth
+		data: function () {
+			return {
+				specs: null,
+				bgSize: 'contain'
+			};
+		},
+		computed: {
+			bgUrl: function () {
+				return 'url("' + this.specs.split('|')[0] + '")';
+			},
+			canvasW: function () {
+				return this.specs.split('|')[1] + 'px';
+			},
+			canvasH: function () {
+				return this.specs.split('|')[2] + 'px';
+			}
+		},
+		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span>'
+
+	});
+}
 
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
 qPP.Signal = signals.Signal;
@@ -34,8 +107,9 @@ qPP.CompSignal = signals.CompoundSignal;
 qPP._setUpSignals = function () {
 	qPP.textureAtlasLoadedSgn = new qPP.Signal();
 	qPP.blockReadySgn = new qPP.Signal();
+	qPP.imagesLoadedSgn = new qPP.Signal();
 	qPP.qualtricsPageReadySgn = new qPP.Signal();
-	qPP.readyToConstructVMSgn = new qPP.CompSignal(qPP.qualtricsPageReadySgn, qPP.textureAtlasLoadedSgn, qPP.blockReadySgn);
+	qPP.readyToConstructVMSgn = new qPP.CompSignal(qPP.qualtricsPageReadySgn, qPP.textureAtlasLoadedSgn, qPP.blockReadySgn, qPP.imagesLoadedSgn);
 	qPP.readyToConstructVMSgn.add(qPP._constructPageVM);
 	qPP.pageVisibleSgn = new qPP.Signal();
 	jq(function () {
@@ -55,6 +129,14 @@ qPP._setUpSignals = function () {
 		}
 		if (typeof qPP.__startupKey === 'undefined') {
 			qPP.blockReadySgn.dispatch();
+		}
+		if (qPP.engine.Page) {
+			qPP.engine.Page.once("ready:imagesLoaded", function () {
+				qPP.imagesLoadedSgn.dispatch();
+			});
+			qPP.engine.Page.setupImageLoadVerification();
+		} else {
+			qPP.imagesLoadedSgn.dispatch();
 		}
 	}
 	jq(window).load(function () {
@@ -123,14 +205,8 @@ if (!qPP.edSnapshotLocker.formulae) {
 }
 vmSourceObj = {
 	computed: {},
-	compiled: function () {
-
-	},
+	compiled: function () {},
 	ready: function () {
-		if (qPP.engine.Page) {
-			qPP.engine.Page.once("ready:imagesLoaded", qPP._imagesReadyHandler);
-			qPP.engine.Page.setupImageLoadVerification();
-		}
 		qPP._disableCopyPaste();
 		qPP.buttonsReadySgn.dispatch();
 		qPP._makePageVisible();
@@ -263,10 +339,6 @@ qPP.setCompED = function (typeTag, userFormula) {
 	vmSourceObj.data.formulae[typeTag] = formula;
 };
 
-qPP._imagesReadyHandler = function () {
-	console.log('images loaded!')
-};
-
 qPP._constructPageVM = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
 	console.log('construct vm');
 	qPP._convertAllExistingFormulaeToCompEDs();
@@ -341,11 +413,23 @@ qPP.addTextEntryHints = function (q) {
 
 qPP.createImageAtlas = function (q, picLink, jsonLink) {
 	qPP.edSnapshotLocker.textureAtlas = {};
-	var textAtlasImg = new Image(200, 100);
-	textAtlasImg.src = picLink;
-	jq(textAtlasImg).appendTo(jq('#' + q.questionId).find('.QuestionText'));
+	var loadQueue = new createjs.LoadQueue(false);
+	loadQueue.addEventListener("complete", handlePreloadComplete);
+	loadQueue.loadFile({
+		id: "atlasImg",
+		src: picLink
+	});
+	loadQueue.loadFile({
+		id: "atlasHash",
+		src: jsonLink
+	});
 
-	jq.getJSON(jsonLink, function (json) {
+	function handlePreloadComplete(evt) {
+		var json = evt.target.getResult('atlasHash');
+		processJson(json);
+	}
+
+	function processJson(json) {
 		qPP.edSnapshotLocker.textureAtlas.url = picLink;
 		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
 		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
@@ -354,9 +438,51 @@ qPP.createImageAtlas = function (q, picLink, jsonLink) {
 				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
 			}).mapValues('frame').value();
 		qPP.textureAtlasLoadedSgn.dispatch();
-	})
+	}
 };
 
+qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
+	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
+		return;
+	}
+
+	var totalImgCnt = imgArray.length;
+	var nRow = Math.ceil(totalImgCnt / nCol);
+	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
+
+	var gridContainer;
+	if (!q.questionId) {
+		gridContainer = jq('.QuestionText');
+	} else {
+		gridContainer = jq("#" + q.questionId + ' .QuestionText');
+	}
+	gridContainer.addClass('ht-bt').append('<div class="well">');
+	gridContainer = gridContainer.find('.well');
+
+	for (var i = 0; i < nRow; i++) {
+		gridContainer.append(jq('<div class="row">'));
+	}
+
+	gridContainer.find('.row').each(function (idx) {
+		var nthRow = idx + 1;
+		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
+			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
+				jq('<div class="thumbnail">')
+				.append('<div class="grid-img-wrapper">')
+				.append('<div class="caption">')
+			);
+			jq(this).append(thumbnailWrapper);
+		}
+	});
+
+	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
+		var wrapper = jq(this).css({
+			height: imgHeight + 'px'
+		});
+		var wrapperW = wrapper.width();
+		wrapper.append('<atlasimg specs="' + imgArray[idx] + '|' + wrapperW + '|' + imgHeight + '"></atlasimg>');
+	});
+};
 
 qPP.decorateTextEntry = function (q, pre, post, width) {
 	if (!width) {
@@ -371,22 +497,69 @@ qPP.decorateTextEntry = function (q, pre, post, width) {
 	}
 };
 
-qPP.createLikertScale = function (q, begin, end, leftAnchor, rightAnchor) {
-	if (qPP._getQuestionType(q) === 'MC') {
-		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure tbody');
-		var controlRow = choiceTbl.find('tr').last();
-		var lblRow = controlRow.after("<tr>").next();
+qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width) {
+	if (qPP._getQuestionType(q) === 'TE') {
+		if (!width) {
+			width = 300;
+		}
+		var statements = [];
+		jq("#" + q.questionId)
+			.find('.ChoiceStructure tbody tr')
+			.find('td:first')
+			.each(function () {
+				statements.push(jq(this).text());
+				jq(this).remove();
+			});
+		console.log('statements', statements);
 
-		var topRowNumbers = ld.range(begin, end + 1);
-		choiceTbl.find('tr').first().find('td').each(function (idx) {
-			jq(this).find('span label.SingleAnswer').html('<span class="ht-bt">' + topRowNumbers[idx] + '</span>');
-			lblRow.append('<td>&mdash;</td>');
-		});
-		lblRow.find('td').first().html('<span class="ht-bt">' + leftAnchor + '</span>');
-		lblRow.find('td').last().html('<span class="ht-bt">' + rightAnchor + '</span>');
+
+		jq("#" + q.questionId)
+			.find('.ChoiceStructure tbody tr').each(function (idx) {
+				jq('<tr>').append(jq('<td>').text(statements[idx]))
+					.insertBefore(jq(this));
+				jq(this).after('<hr>');
+			});
+
+		jq("#" + q.questionId)
+			.find('.ChoiceStructure').addClass('ht-bt')
+			.find('input.InputText')
+			.css('display', 'inline')
+			.before('<label>' + minLbl + "</label>")
+			.after('<label>' + maxLbl + "</label>")
+			.width(width + 'px')
+			.attr('min', min).attr('max', max).attr('value', val)
+			.attr('type', 'range');
 	}
 };
 
+qPP.createLikertScale = function (q, leftAnchor, rightAnchor, poleCnt) {
+	if (qPP._getQuestionType(q) === 'MC') {
+		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure');
+		choiceTbl.find('tr:last td').css({
+			'background-color': 'silver'
+		});
+
+		if (!poleCnt) {
+			poleCnt = 0;
+		}
+		if (poleCnt > 0) {
+			choiceTbl.find('tr:last td:last').css({
+				'border-top-right-radius': '100%',
+				'border-bottom-right-radius': '100%'
+			});
+		}
+		if (poleCnt > 1) {
+			choiceTbl.find('tr:last td:first').css({
+				'border-top-left-radius': '100%',
+				'border-bottom-left-radius': '100%'
+			});
+		}
+		choiceTbl.find('tr:first')
+			.prepend(jq('<td rowspan="2" style="vertical-align:bottom !important">').text(leftAnchor))
+			.append(jq('<td rowspan="2" style="vertical-align:bottom !important">').text(rightAnchor));
+
+	}
+};
 
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
@@ -407,8 +580,8 @@ qPP.enableMarkdown = function (q) {
 		.find('.QuestionText').addClass('ht-bt mdMode');
 	var mdTxt = ele.text().replace(/^\s*/, "");
 	ele.html(marked(mdTxt, {
-			renderer: qPP.__mdRenderer
-		}));
+		renderer: qPP.__mdRenderer
+	}));
 };
 
 qPP._disableCopyPaste = function () {
@@ -489,13 +662,13 @@ qPP.obtainQResp = function (q) {
 	return resp;
 };
 
-qPP.createVideoPlayer = function (q, url, playerW, playerH) {
-	qPP._createMediaPlayer(q, 'video', url, playerW, playerH);
+qPP.createVideoPlayer = function (q, url, playerW, playerH, autoPlay, endMessage) {
+	qPP._createMediaPlayer(q, 'video', url, playerW, playerH, autoPlay, endMessage);
 };
 
 
-qPP.createAudioPlayer = function (q, url) {
-	qPP._createMediaPlayer(q, 'audio', url);
+qPP.createAudioPlayer = function (q, url, autoPlay, endMessage) {
+	qPP._createMediaPlayer(q, 'audio', url, 400, 50, autoPlay, endMessage);
 };
 
 qPP._createMediaPlayerContainer = function (q) {
@@ -508,18 +681,14 @@ qPP._createMediaPlayerContainer = function (q) {
 	containerParent.addClass('ht-bt').append('<div id="mediaPlayerContainer" class="center-block text-center"></div>');
 };
 
-qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH) {
+qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH, autoPlay, endMessage) {
 	qPP._createMediaPlayerContainer(q);
 
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
-	var mPlayerW = 400,
-		mPlayerH = 50,
+	var mPlayerW = containerW,
+		mPlayerH = containerH,
 		mPlayerHPadding = 18;
-	if (mediaType === 'video') { //this is for video player
-		mPlayerW = containerW;
-		mPlayerH = containerH;
-	}
 
 	var statusMsg;
 	var statusMsgStyle = {
@@ -584,7 +753,7 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			if (mediaType === 'video') {
 				this.media.paused = true;
 				this.media.onComplete.add(this.onMediaComplete, this);
-				this.videoSprite = this.media.addToWorld(mPlayerW/2, mPlayerH/2, 0.5, 0.5, scaleFactor, scaleFactor);
+				this.videoSprite = this.media.addToWorld(mPlayerW / 2, mPlayerH / 2, 0.5, 0.5, scaleFactor, scaleFactor);
 				this.addTogglePlayBtn();
 			} else {
 				this.audioSprite = mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, "pre-processing audio", {
@@ -598,6 +767,9 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			}
 
 			mPlayer.onPause.add(this.pauseMedia, this);
+			if(autoPlay===true && mediaType==='video'){
+				this.playMedia();
+			}
 
 		},
 		update: function () {
@@ -609,6 +781,9 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			this.media.play();
 			this.media.pause();
 			this.addTogglePlayBtn();
+			if(autoPlay===true){
+				this.playMedia();
+			}
 		},
 		addTogglePlayBtn: function () {
 			this.ppBtn = mPlayer.add.button(0, mPlayer.world.height, 'ppBtn', this.togglePlay, this, 1, 1, 1, 1);
@@ -668,12 +843,18 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 
 	var endState = {
 		create: function () {
-			mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, 'The End', {
-				font: '24px Arial',
-				fill: '#fff'
-			}).anchor.setTo(0.5, 0.5);
-			jq('#Buttons').show();
+			if (endMessage) {
+				mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, endMessage, {
+					font: '24px Arial',
+					fill: '#fff'
+				}).anchor.setTo(0.5, 0.5);
+				jq('#Buttons').show();
+			}else{
+				jq('#Buttons').show();
+				jq('#NextButton').click();
+			}
 		}
+
 	};
 	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, 'mediaPlayerContainer');
 	mPlayer.state.add('boot', bootState);
@@ -813,138 +994,59 @@ qPP.createAudioChecker = function (q, length) {
 
 };
 
-qPP.createImageGridFromUrls = function (q, nCol, imgHeight, imgArray, baseUrl) {
-	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
-		return;
-	}
+//API:slideshow
+qPP.__slides = [];
+qPP.__slideIds = [];
+qPP.__slideshow = null;
 
-	if (!baseUrl) {
-		baseUrl = '';
-	}
-	imgArray = jq.map(imgArray, function (val) {
-		return baseUrl + val;
-	});
-
-
-	var totalImgCnt = imgArray.length;
-	var nRow = Math.ceil(totalImgCnt / nCol);
-	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
-
-	var gridContainer;
-	if (!q.questionId) {
-		gridContainer = jq('.QuestionText');
-	} else {
-		gridContainer = jq("#" + q.questionId + ' .QuestionText');
-	}
-	gridContainer.addClass('ht-bt').append('<div class="well">');
-	gridContainer = gridContainer.find('.well');
-
-	for (var i = 0; i < nRow; i++) {
-		gridContainer.append(jq('<div class="row">'));
-	}
-
-
-	gridContainer.find('.row').each(function (idx) {
-		var nthRow = idx + 1;
-		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
-			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
-				jq('<div class="thumbnail">')
-				.append('<div class="grid-img">')
-				.append('<div class="caption">')
-			);
-			jq(this).append(thumbnailWrapper);
-		}
-	});
-
-	gridContainer.find('.thumbnail .grid-img').each(function (idx) {
-		jq(this).css({
-			height: imgHeight + 'px',
-			"background-image": 'url(' + imgArray[idx] + ')',
-			"background-repeat": "no-repeat",
-			"background-size": "contain",
-			"background-position": "center"
-
-		});
-	});
-};
-
-
-//carousel related items
-qPP.__carouselItems = [];
-qPP.__carouselHeight = null;
-
-qPP.setAsCarouselItem = function (q) {
+qPP.setAsSlide = function (q) {
 	if (q.getQuestionInfo().QuestionType !== 'DB') { //only text/graphic question can be slide
 		return;
 	}
-	var qId = '#' + q.questionId;
-	qPP.__carouselItems.push(qId);
-	if (!qPP.__carouselHeight) {
-		qPP.__carouselHeight = jq(qId).height();
-	} else {
-		qPP.__carouselHeight = qPP.__carouselHeight >= jq(qId).height() ? qPP.__carouselHeight : jq(qId).height();
-	}
+	qPP.__slides.push(jq('#' + q.questionId).find('.QuestionText'));
+	qPP.__slideIds.push('#' + q.questionId);
 };
 
-qPP.__carouselOptions = {
-	$AutoPlay: false,
-	$BulletNavigatorOptions: {
-		$Class: $JssorBulletNavigator$,
-		$ChanceToShow: 2,
-		$AutoCenter: 1,
-		$SpacingX: 10,
-		$ActionMode: 0 //you cannot click on bullet
-	},
-	$ArrowNavigatorOptions: {
-		$Class: $JssorArrowNavigator$,
-		$ChanceToShow: 2,
-		$AutoCenter: 2,
-	}
-};
-
-qPP.createCarousel = function (q) {
+qPP.createSlideshow = function (q) {
 	qPP.hideButtons();
-	qPP.carouselQuestionId = '#' + q.questionId;
-	qPP.carouselWidth = jq(qPP.carouselQuestionId + ' .QuestionText').width();
-
-	qPP._makeCarouselContainer()
-		.append(qPP._fillCarouselItemContainer())
-		.append(qPP._makeCarouselBullets())
-		.append(jq('<span u="arrowleft" class="jssora10l" style= "left: 5px;" >'))
-		.append(jq('<span u="arrowright" class="jssora10r" style= "right: 5px;">'));
-
-	qPP.carousel = new $JssorSlider$('carouselContainer', qPP.__carouselOptions);
-	qPP.carousel.$On($JssorSlider$.$EVT_PARK, function (slideIndex) {
-		if (slideIndex + 1 === qPP.__carouselItems.length) {
-			console.log('carousel ended');
-			jq('#Buttons').show();
+	jq('.Separator').hide();
+	jq('#' + q.questionId).find('.QuestionText').append('<div class="slideshow">slideshow here</div>');
+	qPP.__slideshowWrapper = jq('#' + q.questionId).find('.QuestionText div.slideshow');
+	qPP.__slideshowWidth = qPP.__slideshowWrapper.width();
+	console.log('slideshow width is ', qPP.__slideshowWidth);
+	qPP.__slideshowHeight = ld(qPP.__slides)
+		.map(function (slide) {
+			return slide.height();
+		}).max();
+	console.log('slideshow height is ', qPP.__slideshowHeight);
+	qPP.__slideshowWrapper.addClass('flexslider')
+		.html('')
+		.css({
+			position: 'relative',
+			top: 0,
+			left: 0
+		});
+	qPP._addSlidesToSlideshow();
+	qPP.__slideshow = qPP.__slideshowWrapper.bxSlider({
+		hideControlOnEnd: true,
+		pagerType: 'short',
+		onSlideAfter: function (slide, prevIdx, currentIdx) {
+			console.log(currentIdx);
+			if (currentIdx + 1 === qPP.__slideshow.getSlideCount()) {
+				console.log('slideshow ended');
+				jq('#Buttons').show();
+			}
 		}
 	});
 };
 
-qPP._makeCarouselContainer = function () { //screen is jssor outer container
-	jq(qPP.carouselQuestionId + ' .QuestionText').addClass('ht-bt')
-		.append('<div id="carouselContainer" style="position: relative; top: 0px; left: 0px; width: ' + qPP.carouselWidth + 'px; height: ' + qPP.__carouselHeight + 'px;">');
-
-	return jq('#carouselContainer');
-};
-
-qPP._fillCarouselItemContainer = function () {
-	var carouselItemContainer = jq('<div u="slides" style="position: absolute; overflow: hidden; left: 0px; top: 0px; width: ' + qPP.carouselWidth + 'px; height: ' + qPP.__carouselHeight + 'px;">');
-
-	jq.each(qPP.__carouselItems, function (idx, val) {
-		var slideHtml = jq(val + ' .QuestionText').html();
-		var slideWrap = jq('<div>').append(
-			jq('<div style="height: ' + qPP.__carouselHeight + 'px;">').append(jq('<div style="display: block; position: relative; top: 50%; transform: translateY(-50%);">').html(slideHtml))
-		);
-		carouselItemContainer.append(slideWrap);
-		jq(val).hide().next().hide();
+qPP._addSlidesToSlideshow = function () {
+	ld.forEach(qPP.__slides, function (slide, idx) {
+		var slideWrapper = jq('<div class="ht-bt" style="position: absolute; left: 0px; top: 0px; margin:0px !important;padding:0px !important; width: ' + qPP.__slideshowWidth + 'px; height: ' + qPP.__slideshowHeight + 'px;">');
+		slideWrapper.html(slide.html());
+		qPP.__slideshowWrapper.append(slideWrapper);
+		jq(qPP.__slideIds[idx]).hide();
 	});
-	return carouselItemContainer;
-};
-
-qPP._makeCarouselBullets = function () {
-	return jq('<div u="navigator" class="jssorb14" style="bottom: 10px;">').append('<div u="prototype">');
 };
 
 qPP._setUpSignals();
