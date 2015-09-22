@@ -173,9 +173,7 @@ qPP._setUpSignals = function () {
 			sessionStorage.subRuntimeED = JSON.stringify(subRuntimeED);
 			sessionStorage.arbor = JSON.stringify(arbor);
 		}
-
 	});
-
 };
 
 var subRuntimeED, vmSourceObj, arbor; //the first two are only needed for non jfe mode
@@ -209,7 +207,6 @@ vmSourceObj = {
 		qPP._makePageVisible();
 	}
 };
-
 
 qPP._isComputedED = function (typeTag) {
 	return /^comp(?=[A-Z]\w)/.test(typeTag);
