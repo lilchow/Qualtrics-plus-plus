@@ -353,7 +353,7 @@ qPP._makePageVisible = function () {
 	qPP.pageVisibleSgn.dispatch();
 };
 
-qPP.makeValueTree = function () { //for creating json obj
+qPP.createValueTree = function () { //for creating json obj
 	var args = Array.prototype.slice.call(arguments);
 	if (args.length < 3) {
 		return null;
@@ -1037,12 +1037,10 @@ qPP.createSlideshow = function (q) {
 	jq('#' + q.questionId).find('.QuestionText').append('<div class="slideshow">slideshow here</div>');
 	qPP.__slideshowWrapper = jq('#' + q.questionId).find('.QuestionText div.slideshow');
 	qPP.__slideshowWidth = qPP.__slideshowWrapper.width();
-	console.log('slideshow width is ', qPP.__slideshowWidth);
 	qPP.__slideshowHeight = ld(qPP.__slides)
 		.map(function (slide) {
 			return slide.height();
 		}).max();
-	console.log('slideshow height is ', qPP.__slideshowHeight);
 	qPP.__slideshowWrapper.addClass('flexslider')
 		.html('')
 		.css({
@@ -1052,6 +1050,7 @@ qPP.createSlideshow = function (q) {
 		});
 	qPP._addSlidesToSlideshow();
 	qPP.__slideshow = qPP.__slideshowWrapper.bxSlider({
+		infiniteLoop: false,
 		hideControlOnEnd: true,
 		pagerType: 'short',
 		onSlideAfter: function (slide, prevIdx, currentIdx) {
