@@ -678,7 +678,7 @@ qPP._createMediaPlayerContainer = function (q) {
 	} else {
 		containerParent = jq("#" + q.questionId + ' .QuestionText');
 	}
-	containerParent.addClass('ht-bt').append('<div id="mediaPlayerContainer" class="center-block text-center"></div>');
+	containerParent.addClass('ht-bt').append('<div id="' + q.questionId + 'MediaPlayerContainer" class="center-block text-center"></div>');
 };
 
 qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH, autoPlay, endMessage) {
@@ -767,7 +767,7 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			}
 
 			mPlayer.onPause.add(this.pauseMedia, this);
-			if(autoPlay===true && mediaType==='video'){
+			if (autoPlay === true && mediaType === 'video') {
 				this.playMedia();
 			}
 
@@ -781,7 +781,7 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			this.media.play();
 			this.media.pause();
 			this.addTogglePlayBtn();
-			if(autoPlay===true){
+			if (autoPlay === true) {
 				this.playMedia();
 			}
 		},
@@ -849,14 +849,14 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 					fill: '#fff'
 				}).anchor.setTo(0.5, 0.5);
 				jq('#Buttons').show();
-			}else{
+			} else {
 				jq('#Buttons').show();
 				jq('#NextButton').click();
 			}
 		}
 
 	};
-	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, 'mediaPlayerContainer');
+	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, q.questionId + 'MediaPlayerContainer');
 	mPlayer.state.add('boot', bootState);
 	mPlayer.state.add('load', loadState);
 	mPlayer.state.add('play', playState);
@@ -890,7 +890,7 @@ qPP.createAudioChecker = function (q, length) {
 		containerParent = jq("#" + q.questionId + ' .QuestionText');
 	}
 
-	containerParent.addClass('ht-bt').append('<div id="audioCheckerContainer" class="center-block"></div>');
+	containerParent.addClass('ht-bt').append('<div id="' + q.questionId + 'AudioCheckerContainer" class="center-block"></div>');
 	jq('#audioCheckerContainer').after('<div class="alert alert-danger">Code incorrect. Try again.</div>');
 	jq('.alert-danger').hide();
 
@@ -986,7 +986,7 @@ qPP.createAudioChecker = function (q, length) {
 		}
 	};
 
-	var audioChecker = new Phaser.Game(400, 150, Phaser.CANVAS, 'audioCheckerContainer');
+	var audioChecker = new Phaser.Game(400, 150, Phaser.CANVAS, q.questionId + 'AudioCheckerContainer');
 	audioChecker.state.add('main', mainState);
 	audioChecker.state.add('end', endState);
 	audioChecker.state.start('main');
