@@ -13,6 +13,15 @@ Let's have a look at a super cool feature of `Qualtrics++`. With a few clicks of
 
 A more polished documentation will be up soon. But for now, please refer to this [powerpoint file](https://dl.dropboxusercontent.com/u/3493773/Qualtrics%2B%2B.pptx) if you want to give it a spin. Please refer to the links below for more useful resources on how to conduct psych experiments in Qualtrics.
 
-## Resources
+## :loudspeaker:Shout-outs to the league of extraordinary repositories: 
++ [jQuery](https://github.com/jquery/jquery)
++ [Vue](https://github.com/yyx990803/vue)
++ [lodash](https://github.com/lodash/lodash)
++ [Bootstrap](https://github.com/twbs/bootstrap)
++ [marked](https://github.com/chjj/marked)
++ [Phaser](https://github.com/photonstorm/phaser)
++ [js-signals](https://github.com/millermedeiros/js-signals)
+
+## Related repos:
 + [QRTEngine](http://www.qrtengine.com/)
 + [jsPsych](http://www.jspsych.org/)
