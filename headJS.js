@@ -477,8 +477,8 @@ qPP.createLikertScale = function (q, leftAnchor, rightAnchor, poleCnt) {
 			});
 		}
 		choiceTbl.find('tr:first')
-			.prepend(jq('<td rowspan="2" style="vertical-align:bottom !important">').text(leftAnchor))
-			.append(jq('<td rowspan="2" style="vertical-align:bottom !important">').text(rightAnchor));
+			.prepend(jq('<td rowspan="2" style="vertical-align:bottom !important; padding-right:5px !important">').text(leftAnchor))
+			.append(jq('<td rowspan="2" style="vertical-align:bottom !important"; padding-left:5px !important>').text(rightAnchor));
 
 	}
 };
@@ -498,14 +498,12 @@ qPP.createDopeLikertScale = function (q, leftAnchor, rightAnchor, min, max, widt
 
 	input.slider({
 		step: 1,
-		value:min-1,
+		value: min - 1,
 		tooltip: 'hide',
 		ticks: ld.range(min, max + 1),
 		ticks_labels: ld.range(min, max + 1)
 	});
 };
-
-
 
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
@@ -520,6 +518,58 @@ qPP.hideButtons = function (time) { //time in seconds
 		}, time * 1000);
 	});
 };
+
+//Form content modifications:
+qPP.keepQuestionBodyOnly = function (q) {
+	var question = jq('#' + q.questionId);
+	question.css({
+		'margin-bottom': 0
+	});
+	question.prev('.Separator').hide();
+	question.find('.QuestionText').hide();
+	question.find('.QuestionBody').css({
+		'margin-bottom': 0
+	});
+	question.find('.Inner').css({
+		'padding-top': 0,
+		'padding-bottom': 0
+	})
+
+};
+
+qPP.keepQuestionTextOnly = function (q) {
+	var question = jq('#' + q.questionId);
+	question.css({
+		'margin-bottom': 0
+	});
+	question.prev('.Separator').hide();
+	question.next('.Separator').hide();
+	question.find('.QuestionBody').hide();
+	question.find('.QuestionText')
+		.css({
+			'margin-bottom': 0,
+			'margin-top': 0,
+			'padding-top': 0,
+			'padding-bottom': 0
+		});
+	question.find('.Inner').css({
+		'padding-top': 0,
+		'padding-bottom': 0
+	})
+
+};
+
+qPP.collapseQuestion = function (q, direction) {
+	var question = jq('#' + q.questionId);
+	switch (direction) {
+	case 'up':
+		break;
+	case 'down':
+		break;
+	case 'both':
+		break;
+	}
+}
 
 qPP.createImageAtlas = function (q, picLink, jsonLink) {
 	qPP.edSnapshotLocker.textureAtlas = {};
