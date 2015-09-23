@@ -505,6 +505,10 @@ qPP.createDopeLikertScale = function (q, leftAnchor, rightAnchor, min, max, widt
 	});
 };
 
+qPP.showButtons=function(){
+	jq('#Buttons').show();
+};
+
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
 		qPP.buttonsReadySgn.halt();
@@ -513,11 +517,11 @@ qPP.hideButtons = function (time) { //time in seconds
 		if (!time) {
 			return;
 		}
-		setTimeout(function () {
-			jq('#Buttons').show();
-		}, time * 1000);
+		setTimeout(qPP.showButtons, time * 1000);
 	});
 };
+
+
 
 //Form content modifications:
 qPP.keepQuestionBodyOnly = function (q) {
