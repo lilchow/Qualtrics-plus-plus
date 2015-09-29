@@ -425,25 +425,22 @@ qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width) {
 			width = 300;
 		}
 		var statements = [];
-		jq("#" + q.questionId)
-			.find('.ChoiceStructure tbody tr')
+		var question = jq("#" + q.questionId);
+		question.find('.ChoiceStructure tbody tr')
 			.find('td:first')
 			.each(function () {
 				statements.push(jq(this).text());
 				jq(this).remove();
 			});
-		console.log('statements', statements);
 
 
-		jq("#" + q.questionId)
-			.find('.ChoiceStructure tbody tr').each(function (idx) {
-				jq('<tr>').append(jq('<td>').text(statements[idx]))
-					.insertBefore(jq(this));
-				jq(this).after('<hr>');
-			});
+		question.find('.ChoiceStructure tbody tr').each(function (idx) {
+			jq('<tr>').append(jq('<td>').text(statements[idx]))
+				.insertBefore(jq(this));
+			jq(this).after('<hr>');
+		});
 
-		jq("#" + q.questionId)
-			.find('.ChoiceStructure').addClass('ht-bt')
+		question.find('.ChoiceStructure').addClass('ht-bt')
 			.find('input.InputText')
 			.css('display', 'inline')
 			.before('<label>' + minLbl + "</label>")
@@ -452,6 +449,35 @@ qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width) {
 			.attr('min', min).attr('max', max).attr('value', val)
 			.attr('type', 'range');
 	}
+};
+
+qPP.createDopeSlider = function (q, minLbl, maxLbl, min, max, valArray, width) {
+	if (!width) {
+		width = 300;
+	}
+	var input = jq("#" + q.questionId)
+		.find('.ChoiceStructure').addClass('ht-bt')
+		.find('input.InputText')
+		.css('display', 'inline');
+	input.wrapAll('<div class="well" style="background-color:#cfcfcf !important"/>');
+	input.before('<label style="padding-right:12px !important">' + minLbl + "</label>")
+		.after('<label style="padding-left:12px !important">' + maxLbl + "</label>")
+		.width(width + 'px');
+
+	input.slider({
+		min: min,
+		max: max,
+		step: 1,
+		value: valArray,
+		tooltip: 'show',
+		tooltip_split: true
+	});
+
+	jq(input.slider('getElement'))
+		.find('.slider-track .slider-selection')
+		.css({
+			background: '#ADCAE2'
+		});
 };
 
 qPP.createLikertScale = function (q, leftAnchor, rightAnchor, poleCnt) {
@@ -505,7 +531,7 @@ qPP.createDopeLikertScale = function (q, leftAnchor, rightAnchor, min, max, widt
 	});
 };
 
-qPP.showButtons=function(){
+qPP.showButtons = function () {
 	jq('#Buttons').show();
 };
 
@@ -575,7 +601,7 @@ qPP.collapseQuestion = function (q, direction) {
 	}
 }
 
-qPP.createImageAtlas = function (q, picLink, jsonLink) {
+qPP.importImageAtlas = function (picLink, jsonLink) {
 	qPP.edSnapshotLocker.textureAtlas = {};
 	var loadQueue = new createjs.LoadQueue(false);
 	loadQueue.addEventListener("complete", handlePreloadComplete);
