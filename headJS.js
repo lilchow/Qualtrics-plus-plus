@@ -2,28 +2,6 @@ var jq = $.noConflict();
 var ld = _.noConflict();
 var qPP = {};
 
-//customize marked.js markdown renderer options
-qPP.__mdRenderer = new marked.Renderer();
-qPP.__mdRenderer.link = function (href, title, text) {
-	var spec = href + '|' + text;
-	return '<urlimg specs="' + spec + '">url image:' + spec + '</urlimg>';
-};
-qPP.__mdRenderer.image = function (href, title, text) {
-	var spec = href + '|' + text;
-	return '<atlasimg specs="' + spec + '">atlas image:' + spec + '</atlasimg>';
-};
-qPP.__mdRenderer.del = function (text) {
-	return '<u>' + text + '</u>';
-};
-qPP.__mdRenderer.codespan = function (text) {
-	var arr = text.split('::');
-	var color = 'yellow';
-	if (arr.length === 2) {
-		color = arr.pop();
-	};
-	return '<span style="background-color:' + color + '">' + arr.pop() + '</span>';
-};
-
 //add Vue.js components
 if (!Vue.component('atlasimg')) {
 	Vue.component('atlasimg', {
@@ -90,91 +68,23 @@ if (!Vue.component('urlimg')) {
 			},
 			canvasH: function () {
 				return this.specs.split('|')[2] + 'px';
+			},
+			alignment: function () {
+				var alignMap = {
+					l: 'left',
+					r: 'right',
+					c: 'center'
+				};
+				return alignMap[this.specs.split('|')[3]]
 			}
 		},
-		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span>'
+		template: '<span style="display:block;" v-style="textAlign:alignment"><span style="display:inline-block !important; background-repeat:no-repeat" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span></span>'
 
 	});
 }
 
 qPP.engine = Qualtrics.SurveyEngine; //barely needed
 qPP.Signal = signals.Signal;
-qPP.CompSignal = signals.CompoundSignal;
-
-qPP._setUpSignals = function () {
-	qPP.textureAtlasLoadedSgn = new qPP.Signal();
-	qPP.blockReadySgn = new qPP.Signal();
-	qPP.imagesLoadedSgn = new qPP.Signal();
-	qPP.qualtricsPageReadySgn = new qPP.Signal();
-	qPP.readyToConstructVMSgn = new qPP.CompSignal(qPP.qualtricsPageReadySgn, qPP.textureAtlasLoadedSgn, qPP.blockReadySgn, qPP.imagesLoadedSgn);
-	qPP.readyToConstructVMSgn.add(qPP._constructPageVM);
-	qPP.pageVisibleSgn = new qPP.Signal();
-	jq(function () {
-		qPP.ogFormVisiblityStyle = jq('form').css('visibility');
-		jq('form').css('visibility', 'hidden');
-	});
-
-	qPP.buttonsReadySgn = new qPP.Signal();
-	qPP.buttonsReadySgn.memorize = true;
-
-	qPP.windowLoadedSgn = new qPP.Signal();
-
-	function internalPageReadyHandler() {
-		qPP.qualtricsPageReadySgn.dispatch();
-		if (!qPP.edSnapshotLocker.textureAtlas || qPP.edSnapshotLocker.textureAtlas.url) {
-			qPP.textureAtlasLoadedSgn.dispatch();
-		}
-		if (typeof qPP.__startupKey === 'undefined') {
-			qPP.blockReadySgn.dispatch();
-		}
-		if (qPP.engine.Page) {
-			qPP.engine.Page.once("ready:imagesLoaded", function () {
-				qPP.imagesLoadedSgn.dispatch();
-			});
-			qPP.engine.Page.setupImageLoadVerification();
-		} else {
-			qPP.imagesLoadedSgn.dispatch();
-		}
-	}
-	jq(window).load(function () {
-		qPP.windowLoadedSgn.dispatch();
-	});
-	if (!qPP.engine.Page) {
-		qPP.engine.addOnload = function (handler) {
-			if ($('body') && $('body').hasClassName('EditSection'))
-				return;
-			try {
-				var obj = new Qualtrics.SurveyEngine.QuestionData();
-				obj.onload = handler;
-				qPP.windowLoadedSgn.add(obj.onload, obj, 2);
-			} catch (e) {
-				console.error('SE API Error: ' + e);
-			}
-		};
-		qPP.windowLoadedSgn.add(internalPageReadyHandler);
-	} else {
-		qPP.engine.Page.once('ready', internalPageReadyHandler);
-	}
-
-	qPP.pageUnloadedSgn = new qPP.Signal();
-	if (!qPP.engine.Page) {
-		qPP.engine.addOnUnload(function () {
-			qPP.pageUnloadedSgn.dispatch();
-		});
-	} else {
-		qPP.engine.Page.once('pageunload', function () {
-			qPP.pageUnloadedSgn.dispatch();
-		})
-	}
-	qPP.pageUnloadedSgn.add(function () {
-		qPP.VM.$destroy();
-		console.log('page unloaded');
-		if (!qPP.engine.Page) {
-			sessionStorage.subRuntimeED = JSON.stringify(subRuntimeED);
-			sessionStorage.arbor = JSON.stringify(arbor);
-		}
-	});
-};
 
 var subRuntimeED, vmSourceObj, arbor; //the first two are only needed for non jfe mode
 if (!qPP.engine.Page) {
@@ -202,9 +112,8 @@ vmSourceObj = {
 	computed: {},
 	compiled: function () {},
 	ready: function () {
-		qPP._disableCopyPaste();
-		qPP.buttonsReadySgn.dispatch();
-		qPP._makePageVisible();
+		console.log('vm ready!');
+		jq('body').css('visibility', 'visible');
 	}
 };
 
@@ -243,7 +152,9 @@ qPP._postVMSetED = function (typeTag, edVal) { // post means after VM instantiat
 
 qPP._convertFormulaToCompED = function (edTag, formula) {
 	vmSourceObj.computed[edTag] = function () {
-		return eval(formula);
+		var val = eval(formula);
+		qPP._setEDSnapshotValue(edTag, val);
+		return val;
 	}
 };
 
@@ -281,7 +192,7 @@ qPP.saveRespAsED = function (q, typeTag) {
 	}
 
 	jq(qId).mouseleave(function () {
-		var resp = qPP.obtainQResp(q);
+		var resp = qPP.obtainResp(q);
 		if (!resp) {
 			return;
 		}
@@ -338,20 +249,9 @@ qPP._constructPageVM = function () { //this is the internal page ready handler, 
 	qPP._convertAllExistingFormulaeToCompEDs();
 	qPP.VM = null;
 	qPP.VM = new Vue(vmSourceObj);
-	jq('#NextButton').mouseenter(function () {
-		for (var edTag in qPP.VM) {
-			if (qPP._isComputedED(edTag)) {
-				qPP._setEDSnapshotValue(edTag, qPP.VM.$get(edTag));
-			}
-		}
-	});
 	qPP.VM.$mount(jq('form').get(0));
 };
 
-qPP._makePageVisible = function () {
-	jq('form').css('visibility', qPP.ogFormVisiblityStyle);
-	qPP.pageVisibleSgn.dispatch();
-};
 
 qPP.createValueTree = function () { //for creating json obj
 	var args = Array.prototype.slice.call(arguments);
@@ -388,7 +288,7 @@ qPP.createValueTree = function () { //for creating json obj
 	traverseTree(1, arbor[rootname]);
 };
 
-//Form elements modifications:
+//Form controls modifications:
 qPP.addTextEntryHints = function (q) {
 	if (qPP._getQuestionType(q) !== 'TE' || arguments.length < 2) {
 		return;
@@ -451,9 +351,9 @@ qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width) {
 	}
 };
 
-qPP.createDopeSlider = function (q, minLbl, maxLbl, min, max, valArray, width) {
+qPP.createRangeSlider = function (q, minLbl, maxLbl, min, max, defaultMin, defaultMax, width) {
 	if (!width) {
-		width = 300;
+		width = 450;
 	}
 	var input = jq("#" + q.questionId)
 		.find('.ChoiceStructure').addClass('ht-bt')
@@ -468,7 +368,7 @@ qPP.createDopeSlider = function (q, minLbl, maxLbl, min, max, valArray, width) {
 		min: min,
 		max: max,
 		step: 1,
-		value: valArray,
+		value: [defaultMin, defaultMax],
 		tooltip: 'show',
 		tooltip_split: true
 	});
@@ -480,56 +380,6 @@ qPP.createDopeSlider = function (q, minLbl, maxLbl, min, max, valArray, width) {
 		});
 };
 
-qPP.createLikertScale = function (q, leftAnchor, rightAnchor, poleCnt) {
-	if (qPP._getQuestionType(q) === 'MC') {
-		var choiceTbl = jq("#" + q.questionId).find('.QuestionBody .ChoiceStructure');
-		choiceTbl.find('tr:last td').css({
-			'background-color': 'silver'
-		});
-
-		if (!poleCnt) {
-			poleCnt = 0;
-		}
-		if (poleCnt > 0) {
-			choiceTbl.find('tr:last td:last').css({
-				'border-top-right-radius': '100%',
-				'border-bottom-right-radius': '100%'
-			});
-		}
-		if (poleCnt > 1) {
-			choiceTbl.find('tr:last td:first').css({
-				'border-top-left-radius': '100%',
-				'border-bottom-left-radius': '100%'
-			});
-		}
-		choiceTbl.find('tr:first')
-			.prepend(jq('<td rowspan="2" style="vertical-align:bottom !important; padding-right:5px !important">').text(leftAnchor))
-			.append(jq('<td rowspan="2" style="vertical-align:bottom !important"; padding-left:5px !important>').text(rightAnchor));
-
-	}
-};
-
-qPP.createDopeLikertScale = function (q, leftAnchor, rightAnchor, min, max, width) {
-	if (!width) {
-		width = 300;
-	}
-	var input = jq("#" + q.questionId)
-		.find('.ChoiceStructure').addClass('ht-bt')
-		.find('input.InputText')
-		.css('display', 'inline');
-	input.wrapAll('<div class="well" style="background-color:#cfcfcf !important"/>');
-	input.before('<label style="padding-right:12px !important">' + leftAnchor + "</label>")
-		.after('<label style="padding-left:12px !important">' + rightAnchor + "</label>")
-		.width(width + 'px');
-
-	input.slider({
-		step: 1,
-		value: min - 1,
-		tooltip: 'hide',
-		ticks: ld.range(min, max + 1),
-		ticks_labels: ld.range(min, max + 1)
-	});
-};
 
 qPP.showButtons = function () {
 	jq('#Buttons').show();
@@ -547,9 +397,16 @@ qPP.hideButtons = function (time) { //time in seconds
 	});
 };
 
+qPP.disableCopyPaste = function (q) {
+	jq("#" + q.questionId).on("cut copy paste", ".QuestionBody input:text, .QuestionBody textarea, .QuestionText", function (e) {
+		e.stopPropagation();
+		e.preventDefault();
+	});
+};
 
 
-//Form content modifications:
+//Form content modifications
+
 qPP.keepQuestionBodyOnly = function (q) {
 	var question = jq('#' + q.questionId);
 	question.css({
@@ -589,47 +446,6 @@ qPP.keepQuestionTextOnly = function (q) {
 
 };
 
-qPP.collapseQuestion = function (q, direction) {
-	var question = jq('#' + q.questionId);
-	switch (direction) {
-	case 'up':
-		break;
-	case 'down':
-		break;
-	case 'both':
-		break;
-	}
-}
-
-qPP.importImageAtlas = function (picLink, jsonLink) {
-	qPP.edSnapshotLocker.textureAtlas = {};
-	var loadQueue = new createjs.LoadQueue(false);
-	loadQueue.addEventListener("complete", handlePreloadComplete);
-	loadQueue.loadFile({
-		id: "atlasImg",
-		src: picLink
-	});
-	loadQueue.loadFile({
-		id: "atlasHash",
-		src: jsonLink
-	});
-
-	function handlePreloadComplete(evt) {
-		var json = evt.target.getResult('atlasHash');
-		processJson(json);
-	}
-
-	function processJson(json) {
-		qPP.edSnapshotLocker.textureAtlas.url = picLink;
-		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
-		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
-		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
-			.mapKeys(function (value, key) {
-				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
-			}).mapValues('frame').value();
-		qPP.textureAtlasLoadedSgn.dispatch();
-	}
-};
 
 qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
 	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
@@ -674,97 +490,37 @@ qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
 	});
 };
 
-
-
-
-
-
-qPP.enableMarkdown = function (q) {
-	var ele = jq('#' + q.questionId)
-		.find('.QuestionText').addClass('ht-bt mdMode');
-	var mdTxt = ele.text().replace(/^\s*/, "");
-	ele.html(marked(mdTxt, {
-		renderer: qPP.__mdRenderer
-	}));
-};
-
-qPP._disableCopyPaste = function () {
-	jq(document).on("cut copy paste", ".QuestionBody input:text, .QuestionBody textarea, .QuestionText", function (e) {
-		e.stopPropagation();
-		e.preventDefault();
-	});
-};
-
-qPP._respToNumber = function (resp) {
-	try {
-		resp = resp.trim();
-	} catch (err) {
-		resp = null;
+qPP.enableMarkdown=(function (){
+	//customize marked.js markdown renderer options
+	var qPPRenderer = new marked.Renderer();
+	qPPRenderer.image = function (href, title, text) {
+		var spec = href + '|' + text;
+		return '<urlimg specs="' + spec + '">url image:' + spec + '</urlimg>';
+	};
+	qPPRenderer.link = function (href, title, text) {
+		var spec = href + '|' + text;
+		return '<atlasimg specs="' + spec + '">atlas image:' + spec + '</atlasimg>';
+	};
+	qPPRenderer.del = function (text) {
+		return '<u>' + text + '</u>';
+	};
+	qPPRenderer.codespan = function (text) {
+		var arr = text.split('::');
+		var color = 'yellow';
+		if (arr.length === 2) {
+			color = arr.pop();
+		};
+		return '<span style="background-color:' + color + '">' + arr.pop() + '</span>';
+	};
+	return function (q) {
+		var ele = jq('#' + q.questionId)
+			.find('.QuestionText').addClass('ht-bt mdMode');
+		var mdTxt = ele.text().replace(/^\s*/, "");
+		ele.html(marked(mdTxt, {
+			renderer: qPPRenderer
+		}));
 	}
-	if (isNaN(resp) || resp === null) {
-		return resp;
-	} else {
-		return Number(resp);
-	}
-};
-
-qPP._getQuestionType = function (q) {
-	var qInfo = q.getQuestionInfo();
-	return qInfo.QuestionType;
-};
-
-qPP._getQuestionSelector = function (q) {
-	var qInfo = q.getQuestionInfo();
-	return qInfo.Selector;
-};
-
-qPP.obtainQResp = function (q) {
-	var qInfo = q.getQuestionInfo();
-	var qType = qPP._getQuestionType(q);
-	var qSelector = qPP._getQuestionSelector(q);
-	var choices = q.getChoices();
-	var answers = q.getAnswers();
-
-	var resp = '';
-
-	switch (true) {
-	case qType === 'MC':
-		if (q.getSelectedChoices()[0]) {
-			resp = qInfo.Choices[q.getSelectedChoices()[0]].Text;
-			resp = qPP._respToNumber(resp);
-			//resp=choices.indexOf(q.getChoiceValue())+1;
-		} else {
-			resp = "";
-		}
-		break;
-	case qType === "TE" && qSelector !== "FORM":
-		resp = q.getChoiceValue();
-		resp = qPP._respToNumber(resp);
-		break;
-	case qType === "TE" && qSelector === "FORM":
-		resp = jq.map(choices, function (val) {
-			return qPP._respToNumber(q.getTextValue(val));
-		});
-		break;
-	case qType === "Matrix":
-		resp = jq.map(choices, function (val) {
-			if (qInfo.Answers[q.getSelectedAnswerValue(val)]) {
-				return qPP._respToNumber(qInfo.Answers[q.getSelectedAnswerValue(val)].Display);
-			} else {
-				return "";
-			}
-			//return answers.indexOf(q.getChoiceValue(val))+1
-		});
-		break;
-	case qType === "Slider":
-		resp = jq.map(choices, function (val) {
-			return qPP._respToNumber(q.getChoiceValue(val));
-		});
-		break;
-	}
-	console.log('obtained response: ', resp);
-	return resp;
-};
+})();
 
 qPP.createVideoPlayer = function (q, url, playerW, playerH, autoPlay, endMessage) {
 	qPP._createMediaPlayer(q, 'video', url, playerW, playerH, autoPlay, endMessage);
@@ -775,7 +531,7 @@ qPP.createAudioPlayer = function (q, url, autoPlay, endMessage) {
 	qPP._createMediaPlayer(q, 'audio', url, 400, 50, autoPlay, endMessage);
 };
 
-qPP._createMediaPlayerContainer = function (q) {
+qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH, autoPlay, endMessage) {
 	var containerParent;
 	if (!q.questionId) {
 		containerParent = jq(' .QuestionText');
@@ -783,10 +539,6 @@ qPP._createMediaPlayerContainer = function (q) {
 		containerParent = jq("#" + q.questionId + ' .QuestionText');
 	}
 	containerParent.addClass('ht-bt').append('<div id="' + q.questionId + 'MediaPlayerContainer" class="center-block text-center"></div>');
-};
-
-qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH, autoPlay, endMessage) {
-	qPP._createMediaPlayerContainer(q);
 
 	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
 
@@ -1059,7 +811,7 @@ qPP.createAudioChecker = function (q, length) {
 			}
 		},
 		checkEntry: function () {
-			var entry = qPP.obtainQResp(q);
+			var entry = qPP.obtainResp(q);
 			if (!entry) {
 				return;
 			} else if (entry === correctAnswer) {
@@ -1086,7 +838,7 @@ qPP.createAudioChecker = function (q, length) {
 				font: '24px Arial',
 				fill: '#111'
 			}).anchor.setTo(0.5, 0.5);
-			jq('#Buttons').show();
+			qPP.showButtons();
 		}
 	};
 
@@ -1098,58 +850,221 @@ qPP.createAudioChecker = function (q, length) {
 
 };
 
-//API:slideshow
-qPP.__slides = [];
-qPP.__slideIds = [];
-qPP.__slideshow = null;
-
 qPP.setAsSlide = function (q) {
 	if (q.getQuestionInfo().QuestionType !== 'DB') { //only text/graphic question can be slide
 		return;
 	}
-	qPP.__slides.push(jq('#' + q.questionId).find('.QuestionText'));
-	qPP.__slideIds.push('#' + q.questionId);
+	if (!qPP.createSlideshow.__slides) {
+		qPP.createSlideshow.__slides = [];
+		qPP.createSlideshow.__slideIds = [];
+	}
+
+	qPP.createSlideshow.__slides.push(jq('#' + q.questionId).find('.QuestionText'));
+	qPP.createSlideshow.__slideIds.push('#' + q.questionId);
 };
 
-qPP.createSlideshow = function (q) {
+qPP.createSlideshow = function slideshow(q) {
 	qPP.hideButtons();
 	jq('.Separator').hide();
 	jq('#' + q.questionId).find('.QuestionText').append('<div class="slideshow">slideshow here</div>');
-	qPP.__slideshowWrapper = jq('#' + q.questionId).find('.QuestionText div.slideshow');
-	qPP.__slideshowWidth = qPP.__slideshowWrapper.width();
-	qPP.__slideshowHeight = ld(qPP.__slides)
+	slideshow.__wrapper = jq('#' + q.questionId).find('.QuestionText div.slideshow');
+	slideshow.__width = slideshow.__wrapper.width();
+	slideshow.__height = ld(slideshow.__slides)
 		.map(function (slide) {
 			return slide.height();
 		}).max();
-	qPP.__slideshowWrapper.addClass('flexslider')
+	slideshow.__wrapper.addClass('flexslider')
 		.html('')
 		.css({
 			position: 'relative',
 			top: 0,
 			left: 0
 		});
-	qPP._addSlidesToSlideshow();
-	qPP.__slideshow = qPP.__slideshowWrapper.bxSlider({
+	addSlidesToSlideshow();
+	slideshow.__slideshow = slideshow.__wrapper.bxSlider({
 		infiniteLoop: false,
 		hideControlOnEnd: true,
 		pagerType: 'short',
 		onSlideAfter: function (slide, prevIdx, currentIdx) {
-			console.log(currentIdx);
-			if (currentIdx + 1 === qPP.__slideshow.getSlideCount()) {
+			if (currentIdx + 1 === slideshow.__slideshow.getSlideCount()) {
 				console.log('slideshow ended');
-				jq('#Buttons').show();
+				qPP.showButtons();
 			}
 		}
 	});
+
+	function addSlidesToSlideshow() {
+		ld.forEach(slideshow.__slides,
+			function (slide, idx) {
+				var slideWrapper = jq('<div class="ht-bt" style="position: absolute; left: 0px; top: 0px; margin:0px !important;padding:0px !important; width: ' + slideshow.__width + 'px; height: ' + slideshow.__height + 'px;">');
+				slideWrapper.html(slide.html());
+				slideshow.__wrapper.append(slideWrapper);
+				jq(slideshow.__slideIds[idx]).hide();
+			});
+	}
 };
 
-qPP._addSlidesToSlideshow = function () {
-	ld.forEach(qPP.__slides, function (slide, idx) {
-		var slideWrapper = jq('<div class="ht-bt" style="position: absolute; left: 0px; top: 0px; margin:0px !important;padding:0px !important; width: ' + qPP.__slideshowWidth + 'px; height: ' + qPP.__slideshowHeight + 'px;">');
-		slideWrapper.html(slide.html());
-		qPP.__slideshowWrapper.append(slideWrapper);
-		jq(qPP.__slideIds[idx]).hide();
+
+//Form response processing
+qPP._respToNumber = function (resp) {
+	try {
+		resp = resp.trim();
+	} catch (err) {
+		resp = null;
+	}
+	if (isNaN(resp) || resp === null) {
+		return resp;
+	} else {
+		return Number(resp);
+	}
+};
+
+qPP._getQuestionType = function (q) {
+	var qInfo = q.getQuestionInfo();
+	return qInfo.QuestionType;
+};
+
+qPP._getQuestionSelector = function (q) {
+	var qInfo = q.getQuestionInfo();
+	return qInfo.Selector;
+};
+
+qPP.obtainResp = function (q) {
+	var qInfo = q.getQuestionInfo();
+	var qType = qPP._getQuestionType(q);
+	var qSelector = qPP._getQuestionSelector(q);
+	var choices = q.getChoices();
+	var answers = q.getAnswers();
+
+	var resp = '';
+
+	switch (true) {
+	case qType === 'MC':
+		if (q.getSelectedChoices()[0]) {
+			resp = qInfo.Choices[q.getSelectedChoices()[0]].Text;
+			resp = qPP._respToNumber(resp);
+			//resp=choices.indexOf(q.getChoiceValue())+1;
+		} else {
+			resp = "";
+		}
+		break;
+	case qType === "TE" && qSelector !== "FORM":
+		resp = q.getChoiceValue();
+		resp = qPP._respToNumber(resp);
+		break;
+	case qType === "TE" && qSelector === "FORM":
+		resp = jq.map(choices, function (val) {
+			return qPP._respToNumber(q.getTextValue(val));
+		});
+		break;
+	case qType === "Matrix":
+		resp = jq.map(choices, function (val) {
+			if (qInfo.Answers[q.getSelectedAnswerValue(val)]) {
+				return qPP._respToNumber(qInfo.Answers[q.getSelectedAnswerValue(val)].Display);
+			} else {
+				return "";
+			}
+			//return answers.indexOf(q.getChoiceValue(val))+1
+		});
+		break;
+	case qType === "Slider":
+		resp = jq.map(choices, function (val) {
+			return qPP._respToNumber(q.getChoiceValue(val));
+		});
+		break;
+	}
+	console.log('obtained response: ', resp);
+	return resp;
+};
+
+
+
+qPP.importImageAtlas = function (picLink, jsonLink) {
+	qPP.edSnapshotLocker.textureAtlas = {};
+	qPP._setVMConstructPrereq('atlasReady', false);
+	var loadQueue = new createjs.LoadQueue(false);
+	loadQueue.addEventListener("complete", handlePreloadComplete);
+	loadQueue.loadFile({
+		id: "atlasImg",
+		src: picLink
 	});
+	loadQueue.loadFile({
+		id: "atlasHash",
+		src: jsonLink
+	});
+
+	function handlePreloadComplete(evt) {
+		var json = evt.target.getResult('atlasHash');
+		processJson(json);
+	}
+
+	function processJson(json) {
+		qPP.edSnapshotLocker.textureAtlas.url = picLink;
+		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
+		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
+		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
+			.mapKeys(function (value, key) {
+				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
+			}).mapValues('frame').value();
+		qPP._setVMConstructPrereq('atlasReady', true);
+	}
 };
 
-qPP._setUpSignals();
+qPP._setVMConstructPrereq = (function () {
+	var prereqs = {
+		pageReady: false
+	};
+	return function (prereqName, value) {
+		ld.set(prereqs, prereqName, value);
+		if (value && ld.every(prereqs, Boolean)) {
+			qPP._constructPageVM();
+		}
+	};
+})();
+
+// initiate qPP
+(function () {
+	jq(document).ready(function () {
+		jq('body').css('visibility', 'hidden');
+	});
+
+	qPP.buttonsReadySgn = new qPP.Signal();
+	qPP.buttonsReadySgn.memorize = true;
+	qPP.windowLoadedSgn = new qPP.Signal();
+
+	jq(window).load(function () {
+		qPP.windowLoadedSgn.dispatch();
+	});
+	if (!qPP.engine.Page) {
+		qPP.engine.addOnload = function (handler) {
+			if ($('body') && $('body').hasClassName('EditSection'))
+				return;
+			try {
+				var obj = new Qualtrics.SurveyEngine.QuestionData();
+				obj.onload = handler;
+				qPP.windowLoadedSgn.add(obj.onload, obj, 2);
+			} catch (e) {
+				console.error('SE API Error: ' + e);
+			}
+		};
+		qPP.windowLoadedSgn.add(internalPageReadyHandler);
+	} else {
+		qPP.engine.Page.once('ready', internalPageReadyHandler);
+	}
+
+	function internalPageReadyHandler() {
+		qPP.buttonsReadySgn.dispatch();
+		qPP._setVMConstructPrereq('pageReady', true);
+	}
+
+	qPP.engine.addOnUnload(function () {
+		jq('body').css('visibility', 'hidden');
+		if (!qPP.engine.Page) {
+			sessionStorage.subRuntimeED = JSON.stringify(subRuntimeED);
+			sessionStorage.arbor = JSON.stringify(arbor);
+		}
+		qPP.VM.$destroy();
+		console.log('page unloaded');
+	});
+
+})();
