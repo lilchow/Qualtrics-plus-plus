@@ -1,232 +1,103 @@
 var jq = $.noConflict();
 var ld = _.noConflict();
-var qPP = {};
 
-//add Vue.js components
-if (!Vue.component('atlasimg')) {
-	Vue.component('atlasimg', {
-		props: ['specs'], //specs looks like this atlasKey|imgWidth
-		data: function () {
-			return {
-				specs: null
-			};
-		},
-		computed: {
-			atlas: function () {
-				return this.$parent.textureAtlas;
-			},
-			name: function () {
-				return this.specs.split('|')[0];
-			},
-			canvasW: function () {
-				return this.specs.split('|')[1];
-			},
-			canvasH: function () {
-				return this.specs.split('|')[2];
-			},
-			frame: function () {
-				return this.atlas.frames[this.name];
-			},
-			scalar: function () {
-				return Math.min(this.canvasW / this.frame.w, this.canvasH / this.frame.h);
-			},
-			width: function () {
-				return this.scalar * this.frame.w + 'px';
-			},
-			height: function () {
-				return this.scalar * this.frame.h + 'px';
-			},
-			bgUrl: function () {
-				return 'url("' + this.atlas.url + '")';
-			},
-			bgSize: function () {
-				return (this.atlas.width * this.scalar) + 'px' + ' ' + (this.atlas.height * this.scalar) + 'px';
-			},
-			bgPosition: function () {
-				return (-this.frame.x * this.scalar) + 'px ' + (-this.frame.y * this.scalar) + 'px';
-			}
-		},
-		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:width,height:height,backgroundImage:bgUrl,backgroundSize:bgSize,backgroundPosition:bgPosition"></span>'
+var qPP = {
+	VM: null,
+	engine: Qualtrics.SurveyEngine,
+	Signal: signals.Signal
+};
 
-	});
-}
-if (!Vue.component('urlimg')) {
-	Vue.component('urlimg', {
-		props: ['specs'], //specs looks like this atlasKey|imgWidth
-		data: function () {
-			return {
-				specs: null,
-				bgSize: 'contain'
-			};
-		},
-		computed: {
-			bgUrl: function () {
-				return 'url("' + this.specs.split('|')[0] + '")';
-			},
-			canvasW: function () {
-				return this.specs.split('|')[1] + 'px';
-			},
-			canvasH: function () {
-				return this.specs.split('|')[2] + 'px';
-			},
-			alignment: function () {
-				var alignMap = {
-					l: 'left',
-					r: 'right',
-					c: 'center'
-				};
-				return alignMap[this.specs.split('|')[3]]
-			}
-		},
-		template: '<span style="display:block;" v-style="textAlign:alignment"><span style="display:inline-block !important; background-repeat:no-repeat" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span></span>'
-
-	});
-}
-
-qPP.engine = Qualtrics.SurveyEngine; //barely needed
-qPP.Signal = signals.Signal;
-
-var subRuntimeED, vmSourceObj, arbor; //the first two are only needed for non jfe mode
+var nonPageRuntimeED, vmSource, arbor; //the first two are only needed for non jfe mode
 if (!qPP.engine.Page) {
-	if (!sessionStorage.subRuntimeED) {
-		subRuntimeED = {};
-	} else {
-		subRuntimeED = JSON.parse(sessionStorage.subRuntimeED);
-	}
-
-	if (!sessionStorage.arbor) {
+	if (!sessionStorage.nonPageRuntimeED) {
+		nonPageRuntimeED = {};
 		arbor = {};
 	} else {
+		nonPageRuntimeED = JSON.parse(sessionStorage.nonPageRuntimeED);
 		arbor = JSON.parse(sessionStorage.arbor);
 	}
-
+	qPP.edSnapshotLocker = nonPageRuntimeED;
 } else {
 	arbor = arbor || {};
+	qPP.edSnapshotLocker = qPP.engine.Page.runtime.ED;
 }
 
-qPP.edSnapshotLocker = qPP.engine.Page ? qPP.engine.Page.runtime.ED : subRuntimeED; //edLocker only stores snapshot of ED that can be used in flow or display logic
-if (!qPP.edSnapshotLocker.formulae) {
-	qPP.edSnapshotLocker.formulae = {};
-}
-vmSourceObj = {
+qPP._isComputedED = function (typeTag) {
+	return /^comp[A-Z]\w*$/.test(typeTag);
+};
+
+vmSource = {
+	data: ld.omit(ld.cloneDeep(qPP.edSnapshotLocker),
+		function (val, key) {
+			return qPP._isComputedED(key);
+		}),
 	computed: {},
-	compiled: function () {},
 	ready: function () {
 		console.log('vm ready!');
 		jq('body').css('visibility', 'visible');
 	}
 };
 
-qPP._isComputedED = function (typeTag) {
-	return /^comp(?=[A-Z]\w)/.test(typeTag);
+qPP.getED = function (typeTag) {
+	return qPP.VM ? qPP.VM.$get(typeTag) : qPP.edSnapshotLocker[typeTag];
 };
 
-vmSourceObj.data = jq.extend(true, {}, qPP.edSnapshotLocker);
-for (var edTag in vmSourceObj.data) {
-	if (qPP._isComputedED(edTag)) {
-		delete vmSourceObj.data[edTag]; //remove snapshot value of computed ed from VM data.
+qPP.addED = function (edTag, edVal) {
+	if (!qPP._isComputedED(edTag) && ld.isUndefined(qPP.getED(edTag))) {
+		qPP.setED(edTag, edVal);
 	}
-}
-
-qPP._getEDRealtimeValue = function (typeTag) {
-	return qPP.VM.$get(typeTag);
-};
-
-qPP._getEDSnapshotValue = function (typeTag) {
-	return qPP.edSnapshotLocker[typeTag];
-};
-
-qPP._setEDSnapshotValue = function (typeTag, val) {
-	qPP.edSnapshotLocker[typeTag] = val;
-};
-
-qPP._preVMSetED = function (typeTag, edVal) { // pre means before VM instantiation
-	vmSourceObj.data[typeTag] = edVal;
-	qPP._setEDSnapshotValue(typeTag, edVal);
-};
-
-qPP._postVMSetED = function (typeTag, edVal) { // post means after VM instantiation
-	qPP.VM.$set(typeTag, edVal);
-	qPP._setEDSnapshotValue(typeTag, edVal);
-};
-
-qPP._convertFormulaToCompED = function (edTag, formula) {
-	vmSourceObj.computed[edTag] = function () {
-		var val = eval(formula);
-		qPP._setEDSnapshotValue(edTag, val);
-		return val;
-	}
-};
-
-qPP._convertAllExistingFormulaeToCompEDs = function () { //called at the begnning of every page, if locker has new raw ED it will be changed to ED entity
-	jq.each(vmSourceObj.data.formulae, function (formulaTag, formula) {
-		qPP._convertFormulaToCompED(formulaTag, formula);
-	});
 };
 
 qPP.setED = function (edTag, edVal) {
 	if (qPP._isComputedED(edTag)) {
 		return;
 	}
+	qPP.edSnapshotLocker[edTag] = edVal;
 	if (!qPP.VM) {
-		qPP._preVMSetED(edTag, edVal);
+		vmSource.data[edTag] = edVal;
 	} else {
-		qPP._prostVMSetED(edTag, edVal);
+		qPP.VM.$set(edTag, edVal);
 	}
-};
-
-qPP.getED = function (typeTag) {
-	if (!qPP.VM) {
-		return qPP._getEDSnapshotValue(typeTag);
-	}
-	return qPP._getEDRealtimeValue(typeTag);
 };
 
 qPP.saveRespAsED = function (q, typeTag) {
-	if (qPP._isComputedED(typeTag)) {
-		return;
-	}
 	var qId = "#" + q.questionId;
-	if (!vmSourceObj.data[typeTag]) {
-		qPP._preVMSetED(typeTag, '');
-	}
-
+	qPP.addED(typeTag, '');
 	jq(qId).mouseleave(function () {
 		var resp = qPP.obtainResp(q);
-		if (!resp) {
+		if (resp !== null) {
 			return;
 		}
-		qPP._postVMSetED(typeTag, resp); //this must happen post vm instantiation
+		qPP.setED(typeTag, resp); //this must happen post vm instantiation
 	});
 };
 
-qPP._writeTextField = function (textField, content) { //textfield is pure dom element
-	bililiteRange(textField)
-		.bounds('selection').text(content, 'end').select();
+qPP._convertFormulaToCompED = function (formula, edTag) {
+	vmSource.computed[edTag] = function () {
+		var val = eval(formula);
+		qPP.edSnapshotLocker[edTag] = val;
+		return val;
+	}
 };
 
 qPP._parseUserFormula = function (formula) {
-	var regPattern = /[a-z]\w+(?=[+*/=><\s\]\)-]+|$)/g;
+	var regPattern = /{{[a-zA-Z]\w*}}/g;
 	var dependencyArray = formula.match(regPattern);
-	if (!dependencyArray) {
-		return null;
-	}
-	var dependencyValid = true;
-	jq.each(dependencyArray, function (idx, typeTag) {
-		if (typeof vmSourceObj.data[typeTag] === "undefined") {
-			dependencyValid = false;
-			return false;
-		}
-	});
-
-	if (!dependencyValid) {
+	if (!dependencyArray) { //does not match anaything
 		return null;
 	}
 
-	formula = formula.replace(regPattern, function (typeTag) {
+	if (ld.any(dependencyArray, function (tag) {
+			tag = tag.replace(/[{}]/g, '');
+			ld.isUndefined(qPP.getED(tag));
+		})) { //some dependency is not defined
+		return null;
+	}
+
+	formula = formula.replace(regPattern, function (allMatch, typeTag) {
 		return 'this.' + typeTag;
 	});
-	console.log('formalized formula: ', formula);
+	console.log('parsed formula: ', formula);
 	return formula;
 };
 
@@ -236,19 +107,18 @@ qPP.setCompED = function (typeTag, userFormula) {
 	}
 
 	var formula = qPP._parseUserFormula(userFormula);
-	if (!userFormula) {
+	if (formula === null) {
 		return;
 	}
-
 	qPP.edSnapshotLocker.formulae[typeTag] = formula;
-	vmSourceObj.data.formulae[typeTag] = formula;
+	vmSource.data.formulae[typeTag] = formula;
 };
 
 qPP._constructPageVM = function () { //this is the internal page ready handler, user needs to define their own onPageReady handler
 	console.log('construct vm');
-	qPP._convertAllExistingFormulaeToCompEDs();
-	qPP.VM = null;
-	qPP.VM = new Vue(vmSourceObj);
+	//convert all existing formulae To compEDs 
+	ld.forEach(vmSource.data.formulae, qPP._convertFormulaToCompED);
+	qPP.VM = new Vue(vmSource);
 	qPP.VM.$mount(jq('form').get(0));
 };
 
@@ -404,6 +274,11 @@ qPP.disableCopyPaste = function (q) {
 	});
 };
 
+qPP.setTextEntryValue = function (textField, content) { //textfield is pure dom element
+	bililiteRange(textField)
+		.bounds('selection').text(content, 'end').select();
+};
+
 
 //Form content modifications
 
@@ -490,7 +365,7 @@ qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
 	});
 };
 
-qPP.enableMarkdown=(function (){
+qPP.enableMarkdown = (function () {
 	//customize marked.js markdown renderer options
 	var qPPRenderer = new marked.Renderer();
 	qPPRenderer.image = function (href, title, text) {
@@ -854,11 +729,6 @@ qPP.setAsSlide = function (q) {
 	if (q.getQuestionInfo().QuestionType !== 'DB') { //only text/graphic question can be slide
 		return;
 	}
-	if (!qPP.createSlideshow.__slides) {
-		qPP.createSlideshow.__slides = [];
-		qPP.createSlideshow.__slideIds = [];
-	}
-
 	qPP.createSlideshow.__slides.push(jq('#' + q.questionId).find('.QuestionText'));
 	qPP.createSlideshow.__slideIds.push('#' + q.questionId);
 };
@@ -881,12 +751,12 @@ qPP.createSlideshow = function slideshow(q) {
 			left: 0
 		});
 	addSlidesToSlideshow();
-	slideshow.__slideshow = slideshow.__wrapper.bxSlider({
+	slideshow.__main = slideshow.__wrapper.bxSlider({
 		infiniteLoop: false,
 		hideControlOnEnd: true,
 		pagerType: 'short',
 		onSlideAfter: function (slide, prevIdx, currentIdx) {
-			if (currentIdx + 1 === slideshow.__slideshow.getSlideCount()) {
+			if (currentIdx + 1 === slideshow.__main.getSlideCount()) {
 				console.log('slideshow ended');
 				qPP.showButtons();
 			}
@@ -903,7 +773,9 @@ qPP.createSlideshow = function slideshow(q) {
 			});
 	}
 };
-
+qPP.createSlideshow.__slides = [];
+qPP.createSlideshow.__slideIds = [];
+qPP.createSlideshow.__main = null;
 
 //Form response processing
 qPP._respToNumber = function (resp) {
@@ -979,6 +851,19 @@ qPP.obtainResp = function (q) {
 
 
 
+qPP._setVMConstructPrereq = (function () {
+	var prereqs = {
+		pageReady: false
+	};
+	return function (prereqName, value) {
+		ld.set(prereqs, prereqName, value);
+		if (value && ld.every(prereqs, Boolean)) {
+			qPP._constructPageVM();
+		}
+	};
+})();
+
+//add Vue.js components
 qPP.importImageAtlas = function (picLink, jsonLink) {
 	qPP.edSnapshotLocker.textureAtlas = {};
 	qPP._setVMConstructPrereq('atlasReady', false);
@@ -1010,17 +895,85 @@ qPP.importImageAtlas = function (picLink, jsonLink) {
 	}
 };
 
-qPP._setVMConstructPrereq = (function () {
-	var prereqs = {
-		pageReady: false
-	};
-	return function (prereqName, value) {
-		ld.set(prereqs, prereqName, value);
-		if (value && ld.every(prereqs, Boolean)) {
-			qPP._constructPageVM();
-		}
-	};
-})();
+if (!Vue.component('atlasimg')) {
+	Vue.component('atlasimg', {
+		props: ['specs'], //specs looks like this atlasKey|imgWidth
+		data: function () {
+			return {
+				specs: null
+			};
+		},
+		computed: {
+			atlas: function () {
+				return this.$parent.textureAtlas;
+			},
+			name: function () {
+				return this.specs.split('|')[0];
+			},
+			canvasW: function () {
+				return this.specs.split('|')[1];
+			},
+			canvasH: function () {
+				return this.specs.split('|')[2];
+			},
+			frame: function () {
+				return this.atlas.frames[this.name];
+			},
+			scalar: function () {
+				return Math.min(this.canvasW / this.frame.w, this.canvasH / this.frame.h);
+			},
+			width: function () {
+				return this.scalar * this.frame.w + 'px';
+			},
+			height: function () {
+				return this.scalar * this.frame.h + 'px';
+			},
+			bgUrl: function () {
+				return 'url("' + this.atlas.url + '")';
+			},
+			bgSize: function () {
+				return (this.atlas.width * this.scalar) + 'px' + ' ' + (this.atlas.height * this.scalar) + 'px';
+			},
+			bgPosition: function () {
+				return (-this.frame.x * this.scalar) + 'px ' + (-this.frame.y * this.scalar) + 'px';
+			}
+		},
+		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:width,height:height,backgroundImage:bgUrl,backgroundSize:bgSize,backgroundPosition:bgPosition"></span>'
+
+	});
+}
+if (!Vue.component('urlimg')) {
+	Vue.component('urlimg', {
+		props: ['specs'], //specs looks like this atlasKey|imgWidth
+		data: function () {
+			return {
+				specs: null,
+				bgSize: 'contain'
+			};
+		},
+		computed: {
+			bgUrl: function () {
+				return 'url("' + this.specs.split('|')[0] + '")';
+			},
+			canvasW: function () {
+				return this.specs.split('|')[1] + 'px';
+			},
+			canvasH: function () {
+				return this.specs.split('|')[2] + 'px';
+			},
+			alignment: function () {
+				var alignMap = {
+					l: 'left',
+					r: 'right',
+					c: 'center'
+				};
+				return alignMap[this.specs.split('|')[3]]
+			}
+		},
+		template: '<span style="display:block;" v-style="textAlign:alignment"><span style="display:inline-block !important; background-repeat:no-repeat" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span></span>'
+
+	});
+}
 
 // initiate qPP
 (function () {
@@ -1060,7 +1013,7 @@ qPP._setVMConstructPrereq = (function () {
 	qPP.engine.addOnUnload(function () {
 		jq('body').css('visibility', 'hidden');
 		if (!qPP.engine.Page) {
-			sessionStorage.subRuntimeED = JSON.stringify(subRuntimeED);
+			sessionStorage.nonPageRuntimeED = JSON.stringify(nonPageRuntimeED);
 			sessionStorage.arbor = JSON.stringify(arbor);
 		}
 		qPP.VM.$destroy();
