@@ -479,7 +479,7 @@ qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH
 			volDBtn.x = volDBtn.x - volUBtn.width;
 
 			this.media = mPlayer.add[mediaType](mediaType);
-			this.media.volume = 0.5;
+			this.media.volume = 0.9;
 			var scaleFactor = Math.min(mPlayerW / this.media.width, mPlayerH / this.media.height);
 			if (mediaType === 'video') {
 				this.media.paused = true;
