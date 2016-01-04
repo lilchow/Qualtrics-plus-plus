@@ -65,10 +65,10 @@ qPP.saveRespAsED = function (q, typeTag) {
 	qPP.addED(typeTag, '');
 	jq(qId).mouseleave(function () {
 		var resp = qPP.obtainResp(q);
-		if (resp !== null) {
+		if (resp === null) {
 			return;
 		}
-		qPP.setED(typeTag, resp); //this must happen post vm instantiation
+		qPP.setED(typeTag, resp);
 	});
 };
 
@@ -158,6 +158,20 @@ qPP.createValueTree = function () { //for creating json obj
 	traverseTree(1, arbor[rootname]);
 };
 
+//this is for pkcing alternative texts directly typed in the question-text in gui
+qPP.pickAlternativeText = function (q, index) {
+	var hostQElm = jq('#' + q.questionId);
+	var qText = hostQElm.find('.QuestionText')[0];
+	var rng = bililiteRange(qText).bounds('all');
+	var tgtRngMarker = /<#<(.+?)>#>/gi;
+	var alternatives,pickedAlternative;
+	for (rng.find(tgtRngMarker); rng.match; rng.find(tgtRngMarker)) {
+		alternatives = rng.match[1];
+		pickedAlternative = alternatives.split('<>')[index];
+		rng.text(pickedAlternative, 'end');
+	}
+};
+
 //Form controls modifications:
 qPP.addTextEntryHints = function (q) {
 	if (qPP._getQuestionType(q) !== 'TE' || arguments.length < 2) {
@@ -189,28 +203,139 @@ qPP.decorateTextEntry = function (q, pre, post, width) {
 	}
 };
 
-qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width) {
+qPP.addWordCounter = function (q) {
+	var hostQElm = jq('#' + q.questionId);
+	qPP.setED('wordCnt', '0');
+	var qBody = hostQElm.find('.QuestionBody').addClass('ht-bt');
+	var counter = jq("<div/>")
+		.insertAfter(qBody.find('.ChoiceStructure'))
+		.text('current word count: {{wordCnt}}')
+		.addClass("alert alert-info");
+
+	qBody.find('textarea')
+		.change(countWord)
+		.keyup(countWord);
+
+	function countWord() {
+		var enteredTxt = qBody.find('textarea').val();
+		if (enteredTxt.length === 0) {
+			qPP.setED('wordCnt', '0');
+		} else {
+			var wordCount = enteredTxt.trim().replace(/\s+/gi, ' ').split(' ').length;
+			qPP.setED('wordCnt', String(wordCount));
+		}
+	}
+};
+
+qPP.setMinWordCnt = function (q, min) {
+	qPP.addWordCounter(q);
+	var hostQElm = jq('#' + q.questionId);
+	var qBody = hostQElm.find('.QuestionBody');
+	var alert = jq('<div class="alert alert-danger" style="display:none">your passage does NOT have enough words</div>')
+		.insertAfter(qBody.find('.ChoiceStructure'));
+	qPP.modButtons(checkCurrentWordCnt);
+
+	function checkCurrentWordCnt() {
+		var cnt = parseInt(qPP.getED('wordCnt'));
+		if (cnt >= min) {
+			qPP.deModButtons();
+			jq('#Buttons').click();
+		} else {
+			alert.show();
+			setTimeout(function () {
+				alert.hide();
+			}, 1500);
+		}
+	}
+};
+
+qPP.setTextareaRules = function (q, min, forbiddenLetters) {
+	qPP.addWordCounter(q);
+	var hostQElm = jq('#' + q.questionId);
+	var qBody = hostQElm.find('.QuestionBody');
+	var alert1 = jq('<div class="alert alert-danger" style="display:none">your passage does NOT have enough words</div>')
+		.insertAfter(qBody.find('.ChoiceStructure'));
+	var alert2 = jq('<div class="alert alert-danger" style="display:none">your passage contains forbidden letters</div>')
+		.insertAfter(qBody.find('.ChoiceStructure'));
+	qPP.modButtons(checkRules);
+
+	function checkCurrentWordCnt() {
+		var cnt = parseInt(qPP.getED('wordCnt'));
+		if (cnt < min) {
+			alert1.show();
+			setTimeout(function () {
+				alert1.hide();
+			}, 1500);
+		}
+		return (cnt >= min);
+	}
+
+	function checkForbiddenLetters() {
+		var enteredTxt = qBody.find('textarea').val();
+		var cnt = ld.intersection(forbiddenLetters, enteredTxt).length;
+		if (cnt > 0) {
+			alert2.show();
+			setTimeout(function () {
+				alert2.hide();
+			}, 1500);
+		}
+		return (cnt <= 0);
+	}
+
+	function checkRules() {
+		if (checkCurrentWordCnt() && checkForbiddenLetters()) {
+			qPP.deModButtons();
+			jq('#Buttons').click();
+		}
+	}
+};
+
+qPP.createBipolarLikert = function (q, min) { //only minimal value is needed, turn bipolar question into decent liker
+	var queBody = jq('#' + q.questionId).find('.QuestionBody').addClass('ht-bt');
+	var radios = queBody.find('.ChoiceRow td.c4');
+	radios.wrapInner('<label class="btn btn-default">');
+	radios = queBody.find('input:radio');
+	if (min) {
+		jq.each(radios, function (idx) {
+			jq(this).after(min + idx).hide();
+		});
+	}
+	var tableRow = queBody.find('.ChoiceRow');
+	var btnGrp = jq('<td class="btn-group btn-group-justified">')
+		.append(queBody.find('label.btn'));
+	var left = jq('<td style="width:18%">').html('<span class="badge">' + tableRow.find('.AnswerLeft').text() + '</span>');
+	var right = jq('<td style="width:18%">').html('<span class="badge">' + tableRow.find('.AnswerRight').text() + '</span>');
+	tableRow.empty().append(left).append(btnGrp).append(right);
+	tableRow.on('click', 'label.btn', function () {
+		tableRow.find('label.btn').removeClass('active');
+		jq(this).addClass('active');
+	});
+};
+
+qPP.createSlider = function (q, minLbl, maxLbl, min, max, val, width, keepStatements) {
 	if (qPP._getQuestionType(q) === 'TE') {
 		if (!width) {
 			width = 300;
 		}
 		var statements = [];
-		var question = jq("#" + q.questionId);
-		question.find('.ChoiceStructure tbody tr')
+		var hostQElm = jq("#" + q.questionId);
+		hostQElm.find('.ChoiceStructure tbody tr')
 			.find('td:first')
 			.each(function () {
 				statements.push(jq(this).text());
 				jq(this).remove();
 			});
 
+		if (keepStatements) {
+			hostQElm.find('.ChoiceStructure tbody tr').each(function (idx) {
+				jq('<tr>').append(jq('<td>').text(statements[idx]))
+					.insertBefore(jq(this));
+				jq(this).after('<hr>');
+			});
 
-		question.find('.ChoiceStructure tbody tr').each(function (idx) {
-			jq('<tr>').append(jq('<td>').text(statements[idx]))
-				.insertBefore(jq(this));
-			jq(this).after('<hr>');
-		});
+		}
 
-		question.find('.ChoiceStructure').addClass('ht-bt')
+		hostQElm.find('.ChoiceStructure').addClass('ht-bt')
 			.find('input.InputText')
 			.css('display', 'inline')
 			.before('<label>' + minLbl + "</label>")
@@ -250,6 +375,24 @@ qPP.createRangeSlider = function (q, minLbl, maxLbl, min, max, defaultMin, defau
 		});
 };
 
+qPP.modButtons = function (newFunction) {
+	qPP.buttonsReadySgn.addOnce(function () {
+		function enhancedNewFunction(evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			newFunction();
+		}
+		jq('#Buttons')[0].modFunction = enhancedNewFunction;
+		jq('#Buttons')[0].addEventListener("click", jq('#Buttons')[0].modFunction, true);
+	});
+};
+
+qPP.deModButtons = function () {
+	if (jq('#Buttons')[0].modFunction) {
+		jq('#Buttons').get(0).removeEventListener("click", jq('#Buttons')[0].modFunction, true);
+	}
+
+};
 
 qPP.showButtons = function () {
 	jq('#Buttons').show();
@@ -257,8 +400,8 @@ qPP.showButtons = function () {
 
 qPP.hideButtons = function (time) { //time in seconds
 	qPP.buttonsReadySgn.addOnce(function () {
-		qPP.buttonsReadySgn.halt();
-		qPP.buttonsReadySgn.forget();
+		//qPP.buttonsReadySgn.halt();
+		//qPP.buttonsReadySgn.forget();
 		jq('#Buttons').hide();
 		if (!time) {
 			return;
@@ -274,108 +417,90 @@ qPP.disableCopyPaste = function (q) {
 	});
 };
 
-qPP.setTextEntryValue = function (textField, content) { //textfield is pure dom element
-	bililiteRange(textField)
-		.bounds('selection').text(content, 'end').select();
+qPP.setTextEntryValue = function (textEntry, content) { //textfield is pure dom element
+	bililiteRange(textEntry).text(content);
 };
 
 
 //Form content modifications
 
-qPP.keepQuestionBodyOnly = function (q) {
-	var question = jq('#' + q.questionId);
-	question.css({
-		'margin-bottom': 0
-	});
-	question.prev('.Separator').hide();
-	question.find('.QuestionText').hide();
-	question.find('.QuestionBody').css({
-		'margin-bottom': 0
-	});
-	question.find('.Inner').css({
-		'padding-top': 0,
-		'padding-bottom': 0
-	})
-
+qPP.removeQuestionText = function (q) {
+	var hostQElm = jq('#' + q.questionId);
+	hostQElm.find('.QuestionText').hide();
 };
 
-qPP.keepQuestionTextOnly = function (q) {
-	var question = jq('#' + q.questionId);
-	question.css({
-		'margin-bottom': 0
-	});
-	question.prev('.Separator').hide();
-	question.next('.Separator').hide();
-	question.find('.QuestionBody').hide();
-	question.find('.QuestionText')
-		.css({
-			'margin-bottom': 0,
-			'margin-top': 0,
-			'padding-top': 0,
-			'padding-bottom': 0
-		});
-	question.find('.Inner').css({
-		'padding-top': 0,
-		'padding-bottom': 0
-	})
-
+qPP.removeQuestionBody = function (q) {
+	var hostQElm = jq('#' + q.questionId);
+	hostQElm.find('.QuestionBody').hide();
 };
 
+qPP.removeEntireQuestion = function (q) {
+	var hostQElm = jq('#' + q.questionId);
+	hostQElm.hide();
+};
 
-qPP.createAtlasImageGrid = function (q, nCol, imgHeight, imgArray) {
-	if (!Array.isArray(imgArray) || [1, 2, 3, 4].indexOf(nCol) < 0) {
-		return;
+qPP.collapseQuestionBorder = function (q, whichSide) {
+	if (q.getQuestionInfo().QuestionType === 'DB') { //text/graphic question can be slide
+		qPP.removeQuestionBody(q);
 	}
-
-	var totalImgCnt = imgArray.length;
-	var nRow = Math.ceil(totalImgCnt / nCol);
-	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
-
-	var gridContainer;
-	if (!q.questionId) {
-		gridContainer = jq('.QuestionText');
-	} else {
-		gridContainer = jq("#" + q.questionId + ' .QuestionText');
-	}
-	gridContainer.addClass('ht-bt').append('<div class="well">');
-	gridContainer = gridContainer.find('.well');
-
-	for (var i = 0; i < nRow; i++) {
-		gridContainer.append(jq('<div class="row">'));
-	}
-
-	gridContainer.find('.row').each(function (idx) {
-		var nthRow = idx + 1;
-		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
-			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
-				jq('<div class="thumbnail">')
-				.append('<div class="grid-img-wrapper">')
-				.append('<div class="caption">')
-			);
-			jq(this).append(thumbnailWrapper);
+	var hostQElm = jq('#' + q.questionId);
+	var collapseUp = {
+		'margin-top': 0,
+		'padding-top': 0
+	};
+	var collapseDown = {
+		'margin-bottom': 0,
+		'padding-bottom': 0
+	};
+	switch (true) {
+	case whichSide === 'up' || whichSide === 'both':
+		hostQElm.prev('.Separator').hide();
+		hostQElm.find('.Inner').css(collapseUp);
+		if (jq('.QuestionText', hostQElm).is(':visible')) {
+			jq('.QuestionText', hostQElm).css(collapseUp);
+		} else {
+			jq('.QuestionBody', hostQElm).css(collapseUp);
 		}
-	});
-
-	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
-		var wrapper = jq(this).css({
-			height: imgHeight + 'px'
-		});
-		var wrapperW = wrapper.width();
-		wrapper.append('<atlasimg specs="' + imgArray[idx] + '|' + wrapperW + '|' + imgHeight + '"></atlasimg>');
-	});
+		if (whichSide === 'up') {
+			break;
+		}
+	case whichSide === 'down':
+		hostQElm.next('.Separator').hide();
+		hostQElm.find('.Inner').css(collapseDown);
+		if (jq('.QuestionBody', hostQElm).is(':visible')) {
+			jq('.QuestionBody', hostQElm).css(collapseDown);
+		} else {
+			jq('.QuestionText', hostQElm).css(collapseDown);
+		}
+	}
 };
 
 qPP.enableMarkdown = (function () {
 	//customize marked.js markdown renderer options
+	var alignMap = {
+		l: 'left',
+		r: 'right',
+		c: 'center'
+	};
 	var qPPRenderer = new marked.Renderer();
-	qPPRenderer.image = function (href, title, text) {
-		var spec = href + '|' + text;
-		return '<urlimg specs="' + spec + '">url image:' + spec + '</urlimg>';
+	qPPRenderer.heading = function (text, level) {
+		var arr = text.split('::');
+		console.log(arr);
+		var alignment = 'l';
+		if (arr.length === 2) {
+			alignment = arr.pop();
+		}
+		return vsprintf('<h%1$s style="text-align:%2$s">%3$s</h%1$s>', [level, alignMap[alignment], arr[0]]);
 	};
-	qPPRenderer.link = function (href, title, text) {
-		var spec = href + '|' + text;
-		return '<atlasimg specs="' + spec + '">atlas image:' + spec + '</atlasimg>';
+
+	qPPRenderer.image = function (name, title, text) { //name can be url or atlas key
+		var arr = text.split(/::/);
+		arr.unshift(name);
+		arr[3] = arr[3] ? arr[3] : 'c';
+		arr[4] = alignMap[arr[3]];
+		return vsprintf('<qppimg>{{{%1$s | imagify %2$s %3$s "%4$s"}}}</qppimg>', arr);
 	};
+
 	qPPRenderer.del = function (text) {
 		return '<u>' + text + '</u>';
 	};
@@ -397,334 +522,43 @@ qPP.enableMarkdown = (function () {
 	}
 })();
 
-qPP.createVideoPlayer = function (q, url, playerW, playerH, autoPlay, endMessage) {
-	qPP._createMediaPlayer(q, 'video', url, playerW, playerH, autoPlay, endMessage);
-};
-
-
-qPP.createAudioPlayer = function (q, url, autoPlay, endMessage) {
-	qPP._createMediaPlayer(q, 'audio', url, 400, 50, autoPlay, endMessage);
-};
-
-qPP._createMediaPlayer = function (q, mediaType, fileUrl, containerW, containerH, autoPlay, endMessage) {
-	var containerParent;
-	if (!q.questionId) {
-		containerParent = jq(' .QuestionText');
-	} else {
-		containerParent = jq("#" + q.questionId + ' .QuestionText');
-	}
-	containerParent.addClass('ht-bt').append('<div id="' + q.questionId + 'MediaPlayerContainer" class="center-block text-center"></div>');
-
-	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
-
-	var mPlayerW = containerW,
-		mPlayerH = containerH,
-		mPlayerHPadding = 18;
-
-	var statusMsg;
-	var statusMsgStyle = {
-		font: Math.floor(mPlayerHPadding * 0.7) + 'px Arial',
-		fill: '#bbb',
-		align: 'center'
-	};
-
-	var bootState = {
-		preload: function () {
-			mPlayer.load.baseURL = assetBaseUrl;
-			mPlayer.scale.pageAlignHorizontally = true;
-			mPlayer.scale.refresh();
-			mPlayer.load.image('progressBar', 'progressBar.png');
-		},
-		create: function () {
-			mPlayer.stage.backgroundColor = "#333";
-			mPlayer.state.start('load');
-		}
-	};
-
-	var loadState = {
-		preload: function () {
-			mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, ['loading', mediaType, '...'].join(' '), {
-				font: '20px Arial',
-				fill: '#ccc'
-			}).anchor.setTo(0.5, 1);
-			var progressBar = mPlayer.add.sprite(mPlayer.world.centerX, mPlayer.world.centerY, 'progressBar');
-			progressBar.anchor.setTo(0.5, 0);
-			mPlayer.load.setPreloadSprite(progressBar);
-			mPlayer.load[mediaType](mediaType, fileUrl);
-			mPlayer.load.spritesheet('ppBtn', 'playpause.jpg', 40, 40);
-			mPlayer.load.image('volUBtn', 'volUBtn.jpg');
-			mPlayer.load.image('volDBtn', 'volDBtn.jpg');
-		},
-		create: function () {
-			mPlayer.state.start('play');
-		}
-	};
-
-	var playState = {
-		create: function () {
-
-			statusMsg = mPlayer.add.text(mPlayer.world.centerX, mPlayerH, '', statusMsgStyle);
-			statusMsg.anchor.setTo(0.5, 0);
-			statusMsg.text = mediaType + ' ready and click PLAY to play';
-
-			var volUBtn = mPlayer.add.button(mPlayer.world.width, mPlayer.world.height, 'volUBtn', this.incVol, this);
-			volUBtn.anchor.setTo(1, 1);
-			volUBtn.height = mPlayerHPadding;
-			volUBtn.width = volUBtn.height * 0.75;
-
-			var volDBtn = mPlayer.add.button(mPlayer.world.width, mPlayer.world.height, 'volDBtn', this.decVol, this);
-			volDBtn.anchor.setTo(1, 1);
-			volDBtn.height = mPlayerHPadding;
-			volDBtn.width = volDBtn.height * 0.75;
-			volDBtn.x = volDBtn.x - volUBtn.width;
-
-			this.media = mPlayer.add[mediaType](mediaType);
-			this.media.volume = 0.5;
-			var scaleFactor = Math.min(mPlayerW / this.media.width, mPlayerH / this.media.height);
-			if (mediaType === 'video') {
-				this.media.paused = true;
-				this.media.onComplete.add(this.onMediaComplete, this);
-				this.videoSprite = this.media.addToWorld(mPlayerW / 2, mPlayerH / 2, 0.5, 0.5, scaleFactor, scaleFactor);
-				this.addTogglePlayBtn();
-			} else {
-				this.audioSprite = mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, "pre-processing audio", {
-					font: '20px Arial',
-					fill: '#ccc'
-				});
-				this.audioSprite.anchor.setTo(0.5, 0.5);
-				statusMsg.text = '';
-				this.media.onDecoded.addOnce(this.audioDecodedHandler, this);
-				this.media.onStop.add(this.onMediaComplete, this);
-			}
-
-			mPlayer.onPause.add(this.pauseMedia, this);
-			if (autoPlay === true && mediaType === 'video') {
-				this.playMedia();
-			}
-
-		},
-		update: function () {
-
-		},
-		audioDecodedHandler: function () {
-			this.audioSprite.text = "ready";
-			statusMsg.text = mediaType + ' ready and click PLAY to play';
-			this.media.play();
-			this.media.pause();
-			this.addTogglePlayBtn();
-			if (autoPlay === true) {
-				this.playMedia();
-			}
-		},
-		addTogglePlayBtn: function () {
-			this.ppBtn = mPlayer.add.button(0, mPlayer.world.height, 'ppBtn', this.togglePlay, this, 1, 1, 1, 1);
-			this.ppBtn.anchor.setTo(0, 1);
-			this.ppBtn.height = this.ppBtn.width = mPlayerHPadding;
-		},
-		togglePlay: function () {
-			if (this.media.paused) {
-				this.playMedia();
-			} else {
-				this.pauseMedia();
-			}
-		},
-		playMedia: function () {
-			statusMsg.text = mediaType + " playing";
-			this.ppBtn.setFrames(0, 0, 0, 0);
-			if (mediaType === 'video') {
-				this.media.paused = false;
-				this.media.play();
-			} else {
-				this.media.resume();
-			}
-
-		},
-		pauseMedia: function () {
-			statusMsg.text = mediaType + " paused";
-			this.ppBtn.setFrames(1, 1, 1, 1);
-			if (mediaType === 'video') {
-				this.media.paused = true;
-			} else {
-				this.media.pause();
-			}
-
-		},
-		incVol: function () {
-			if (this.media.volume < 1) {
-				this.media.volume += 0.1;
-			}
-		},
-
-		decVol: function () {
-			if (this.media.volume > 0) {
-				this.media.volume -= 0.1;
-			}
-		},
-
-		onMediaComplete: function () {
-			mPlayer.onPause.removeAll(this);
-			this.postCompleteProcessing();
-		},
-
-		postCompleteProcessing: function () {
-			mPlayer.state.start('end');
-		}
-
-	};
-
-	var endState = {
-		create: function () {
-			if (endMessage) {
-				mPlayer.add.text(mPlayer.world.centerX, mPlayer.world.centerY, endMessage, {
-					font: '24px Arial',
-					fill: '#fff'
-				}).anchor.setTo(0.5, 0.5);
-				jq('#Buttons').show();
-			} else {
-				jq('#Buttons').show();
-				jq('#NextButton').click();
-			}
-		}
-
-	};
-	var mPlayer = new Phaser.Game(mPlayerW, mPlayerH + mPlayerHPadding, Phaser.CANVAS, q.questionId + 'MediaPlayerContainer');
-	mPlayer.state.add('boot', bootState);
-	mPlayer.state.add('load', loadState);
-	mPlayer.state.add('play', playState);
-	mPlayer.state.add('end', endState);
-	mPlayer.state.start('boot');
-	qPP.hideButtons();
-
-
-};
-
-qPP.createAudioChecker = function (q, length) {
-	if (!length) length = 4;
-	var markerSet = [1, 2, 3, 4, 5, 6, 7, 8];
-	var markerDurations = [574, 679, 679, 679, 626, 783, 731, 501];
-	var markerStartPoints = markerDurations.concat();
-	for (var i = 0; i < markerSet.length; i++) {
-		markerStartPoints[i] = markerDurations.slice(0, i + 1).reduce(function (p, i) {
-			return p + i;
-		});
-	}
-	markerStartPoints.pop();
-	markerStartPoints.unshift(0);
-	var chosenMarkerSet = ld.shuffle(markerSet).slice(0, length);
-	var usedMarkerSet = [];
-	var correctAnswer = Number(chosenMarkerSet.join('')); //this is the answer participant should type in
-
-	var containerParent;
-	if (!q.questionId) {
-		containerParent = jq(' .QuestionText');
-	} else {
-		containerParent = jq("#" + q.questionId + ' .QuestionText');
+//creating image grid
+qPP.createImageGrid = function (q, nCol, imgHeight, imgArray) {
+	if (!Array.isArray(imgArray) || nCol > 4 || nCol <= 0) {
+		return;
 	}
 
-	containerParent.addClass('ht-bt').append('<div id="' + q.questionId + 'AudioCheckerContainer" class="center-block"></div>');
-	jq('#audioCheckerContainer').after('<div class="alert alert-danger">Code incorrect. Try again.</div>');
-	jq('.alert-danger').hide();
+	var hostQ = q.questionId ? jq("#" + q.questionId) : jq(document);
+	var gridContainer = jq('.QuestionText', hostQ)
+		.addClass('ht-bt').append('<div class="well">');
+	gridContainer = gridContainer.find('.well');
 
-	var assetBaseUrl = "https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/";
+	var totalImgCnt = imgArray.length;
+	var nRow = Math.ceil(totalImgCnt / nCol);
+	var lastRowNCol = totalImgCnt % nCol === 0 ? nCol : totalImgCnt % nCol;
+	for (var i = 0; i < nRow; i++) {
+		gridContainer.append(jq('<div class="row">'));
+	}
 
-	var mainState = {
-		preload: function () {
-			audioChecker.load.baseURL = assetBaseUrl;
-			audioChecker.scale.pageAlignHorizontally = true;
-			audioChecker.scale.refresh();
-			audioChecker.stage.backgroundColor = "#67727A";
-			audioChecker.load.audio('totalClip', 'digits/digits.mp3');
-		},
-		create: function () {
-			var btnW = 120,
-				btnH = 60;
-			this.playBtn = audioChecker.add.graphics(0, 0);
-			this.playBtn.beginFill(0xD75C37, 1);
-			this.playBtn.drawRoundedRect(audioChecker.world.width * 0.25 - btnW / 2, audioChecker.world.centerY - btnH / 2, btnW, btnH, 2);
-			this.playBtn.inputEnabled = true;
-			this.playBtn.input.useHandCursor = true;
-			this.playBtnTxt = audioChecker.add.text(audioChecker.world.width * 0.25, audioChecker.world.centerY, 'PLAY CLIP', {
-				font: '16px Arial',
-				fill: '#000'
-			})
-			this.playBtnTxt.anchor.setTo(0.5, 0.5);
-			this.playBtn.events
-				.onInputDown.addOnce(this.tryPlayNext.bind(this), this);
-
-			this.checkBtn = audioChecker.add.graphics(0, 0);
-			this.checkBtn.beginFill(0x6991AC, 1);
-			this.checkBtn.drawRoundedRect(audioChecker.world.width * 0.75 - btnW / 2, audioChecker.world.centerY - btnH / 2, btnW, btnH, 2);
-			this.checkBtn.inputEnabled = true;
-			this.checkBtn.input.useHandCursor = true;
-			this.checkBtnTxt = audioChecker.add.text(audioChecker.world.width * 0.75, audioChecker.world.centerY, 'CHECK ENTRY', {
-				font: '16px Arial',
-				fill: '#111'
-			});
-			this.checkBtnTxt.anchor.setTo(0.5, 0.5);
-			this.checkBtn.events
-				.onInputDown.add(this.checkEntry.bind(this), this);
-
-			this.totalClip = audioChecker.add.audio('totalClip');
-			this.totalClip.allowMultiple = false;
-			for (var i = 0; i < markerSet.length; i++) {
-				this.totalClip.addMarker(String(i + 1), markerStartPoints[i] / 1000, markerDurations[i] / 1000);
-			}
-
-		},
-		update: function () {},
-		tryPlayNext: function () {
-			this.playBtnTxt.text = "PLAYING";
-			this.playBtnTxt.fill = "#999";
-			if (chosenMarkerSet.length > 0) {
-				var tmp = chosenMarkerSet.shift();
-				usedMarkerSet.push(tmp);
-				this.totalClip.onStop
-					.addOnce(this.tryPlayNext.bind(this), this);
-				this.totalClip.play(String(tmp));
-			} else {
-				this.playCompleteHandler();
-			}
-		},
-		checkEntry: function () {
-			var entry = qPP.obtainResp(q);
-			if (!entry) {
-				return;
-			} else if (entry === correctAnswer) {
-				jq('.alert-danger').hide();
-				audioChecker.state.start('end');
-			} else {
-				jq('.alert-danger').show();
-			}
-		},
-		playCompleteHandler: function () {
-			chosenMarkerSet = usedMarkerSet.concat();
-			usedMarkerSet = [];
-			this.playBtnTxt.text = "REPLAY";
-			this.playBtnTxt.fill = "#000";
-			this.playBtn.events
-				.onInputDown.addOnce(this.tryPlayNext.bind(this));
+	gridContainer.find('.row').each(function (idx) {
+		var nthRow = idx + 1;
+		for (var i = 0; i < (nthRow < nRow ? nCol : lastRowNCol); i++) {
+			var thumbnailWrapper = jq('<div class="col-xs-' + (12 / nCol) + '">').append(
+				jq('<div class="thumbnail">')
+				.append('<div class="grid-img-wrapper" style="height:' + imgHeight + 'px">')
+			);
+			jq(this).append(thumbnailWrapper);
 		}
+	});
 
-	};
-	var endState = {
-		create: function () {
-			audioChecker.stage.backgroundColor = "#EAEAEA";
-			audioChecker.add.text(audioChecker.world.centerX, audioChecker.world.centerY, 'Correct!', {
-				font: '24px Arial',
-				fill: '#111'
-			}).anchor.setTo(0.5, 0.5);
-			qPP.showButtons();
-		}
-	};
 
-	var audioChecker = new Phaser.Game(400, 150, Phaser.CANVAS, q.questionId + 'AudioCheckerContainer');
-	audioChecker.state.add('main', mainState);
-	audioChecker.state.add('end', endState);
-	audioChecker.state.start('main');
-	qPP.hideButtons();
-
+	gridContainer.find('.thumbnail .grid-img-wrapper').each(function (idx) {
+		jq(this).html(sprintf(
+			'{{{"%1$s" | imagify "%2$s" %3$s "c"}}}', imgArray[idx], jq(this).width(), imgHeight));
+	});
 };
 
+// creating carousel-type slideshow with multiple questions
 qPP.setAsSlide = function (q) {
 	if (q.getQuestionInfo().QuestionType !== 'DB') { //only text/graphic question can be slide
 		return;
@@ -777,6 +611,215 @@ qPP.createSlideshow.__slides = [];
 qPP.createSlideshow.__slideIds = [];
 qPP.createSlideshow.__main = null;
 
+//video audio related
+qPP.createSoundChecker = function (q) {
+	qPP.hideButtons();
+	var hostQ = q.questionId ? jq("#" + q.questionId) : jq(document);
+	var mp3Url = 'https://cdn.rawgit.com/lilchow/Qualtrics-plus-plus/master/commonAssets/digits/digits.mp3';
+	var digitSet = ld.range(1, 9);
+	var digitDurations = [574, 679, 679, 679, 626, 783, 731, 496];
+	var startPoint = 0,
+		digitOnsetPoints = [0];
+	ld.forEach(digitDurations, function (duration) {
+		startPoint += duration;
+		digitOnsetPoints.push(startPoint);
+	});
+	var chosenDigitSet = ld.shuffle(digitSet).slice(0, 5);
+	var correctAnswer = Number(chosenDigitSet.join(''));
+	var digitCounter = 0;
+	var soundInstance;
+	var checkerContainer = jq(' .QuestionText', hostQ);
+	checkerContainer.addClass('ht-bt')
+		.append('<div class="audioChecker well center-block text-center" style="width:250px;"></div>')
+		.append('<div class="alert alert-danger">Code incorrect. Try again.</div>');
+
+	var audioChecker = jq('.audioChecker', checkerContainer);
+	var playBtn = jq('<button type="button" class="btn btn-primary btn-block" disabled>PLAY</button>');
+	var checkBtn = jq('<button type="button" class="btn btn-warning btn-block" disabled>CHECK</button>');
+	audioChecker.append(playBtn).append(checkBtn);
+	var alert = jq('.alert-danger', checkerContainer).hide();
+
+	var loadQueue = new createjs.LoadQueue();
+	loadQueue.installPlugin(createjs.Sound);
+	loadQueue.addEventListener("complete", initiateChecker);
+	loadQueue.loadFile({
+		src: mp3Url,
+		type: createjs.AbstractLoader.SOUND
+	});
+
+	function playSingleDigit() {
+		if (digitCounter >= chosenDigitSet.length) {
+			digitCounter = 0;
+			playBtn.prop('disabled', false);
+			return;
+		}
+		var whichDigit = chosenDigitSet[digitCounter];
+		soundInstance = createjs.Sound.createInstance(mp3Url, digitOnsetPoints[whichDigit - 1], digitDurations[whichDigit - 1]);
+		soundInstance.addEventListener("complete", function () {
+			if (soundInstance) {
+				soundInstance.destroy();
+			}
+			++digitCounter;
+			playSingleDigit();
+		});
+		soundInstance.play();
+	};
+
+
+	function initiateChecker() {
+		playBtn.prop('disabled', false);
+		checkBtn.prop('disabled', false);
+		playBtn.on('click', function (evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			jq(this).prop('disabled', true);
+			playSingleDigit();
+		});
+		checkBtn.on('click', function (evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			checkAnswer();
+		})
+	}
+
+	function checkAnswer() {
+		var entry = qPP.obtainResp(q);
+		if (!entry) {
+			return;
+		} else if (entry === correctAnswer) {
+			alert.hide();
+			playBtn.off();
+			checkBtn.off();
+			qPP.showButtons();
+		} else {
+			ld.delay(function () {
+				alert.hide()
+			}, 1500);
+			alert.show();
+		}
+	}
+};
+
+
+qPP._createMediaPlayer = function (q, mediaType, url, width, autoplay, playbackRate) {
+	var currentMediaPlayer = {
+		main: null,
+		container: null,
+		readySgn: new qPP.Signal()
+	};
+	currentMediaPlayer.readySgn.memorize = true;
+	var hostQElm = q.questionId ? jq("#" + q.questionId) : jq(document);
+	playbackRate = ld.isUndefined(playbackRate) ? 1 : playbackRate;
+	autoplay = ld.isUndefined(autoplay) ? false : autoplay;
+	var mediaTag;
+	if (mediaType === 'video') {
+		mediaType = 'video/mp4';
+		mediaTag = 'video';
+	} else {
+		mediaType = 'audio/mp3';
+		mediaTag = 'audio';
+	}
+	qPP._downloadMedia(q, url, qPP._displayDownloadProgressBar, setupMediaPlayer, qPP._alertDownloadFailure);
+	return currentMediaPlayer;
+
+	function setupMediaPlayer(blob_url) {
+		if (hostQElm[0].pbContainer) {
+			hostQElm[0].pbContainer.remove();
+			hostQElm[0].pbContainer = null;
+		}
+
+		mediaTag = jq('<' + mediaTag + ' class="video-js vjs-default-skin vjs-big-play-centered">')
+			.append(
+				jq('<source type="' + mediaType + '"/>').attr('src', blob_url)
+			);
+		jq('.QuestionText', hostQElm).append(mediaTag);
+		var mediaPlayerOptions = {
+			width: width,
+			autoplay: autoplay,
+			posterImage: false,
+			loadingSpinner: false,
+			controls: true,
+			controlBar: false
+				/*{
+								fullscreenToggle: false,
+								muteToggle: false,
+								remainingTimeDisplay: true,
+								progressControl: {
+									seekBar: false
+								}
+							}*/
+		};
+		if (ld.startsWith(mediaType, 'audio')) {
+			mediaPlayerOptions.height = 100;
+		}
+		var playerContainer, mediaPlayer, bigButton;
+
+		mediaPlayer = videojs(mediaTag[0], mediaPlayerOptions, function () {
+			console.log('videojs setup completed!');
+			mediaPlayer.playbackRate(playbackRate);
+			playerContainer = jq(mediaPlayer.contentEl()).css('margin', 'auto');
+			jq(document).on('visibilitychange', function () { //see if the browser tab is in focus or not
+				if (this['hidden']) {
+					mediaPlayer.pause();
+				}
+			});
+			bigButton = jq(mediaPlayer.bigPlayButton.contentEl());
+			mediaPlayer.on('ended', function () {
+				jq(document).off('visibilitychange');
+				console.log('media playback completed!');
+				qPP.showButtons();
+			});
+			mediaPlayer.on('pause', function () {
+				bigButton.show();
+				mediaPlayer.one('play', function () {
+					bigButton.hide();
+				});
+			});
+			currentMediaPlayer.main = mediaPlayer;
+			currentMediaPlayer.container = playerContainer;
+			currentMediaPlayer.readySgn.dispatch();
+		});
+	}
+};
+
+qPP.createVideoPlayer = function (q, url, width, autoplay, playbackRate) {
+	return qPP._createMediaPlayer(q, 'video', url, width, autoplay, playbackRate);
+};
+
+qPP._downloadMedia = function (q, url, progressHandler, completeHandler, errorHandler) {
+	qPP.hideButtons();
+	var hostQElm = q.questionId ? jq("#" + q.questionId) : jq(document);
+	var xhr = new XMLHttpRequest(),
+		progressPercentage = 0;
+	xhr.open("GET", url, true);
+	xhr.responseType = "blob";
+
+	xhr.addEventListener("load", function () {
+		if (xhr.status === 200) {
+			var URL = window.URL || window.webkitURL;
+			var blob_url = URL.createObjectURL(xhr.response);
+			completeHandler(blob_url);
+		} else {
+			errorHandler();
+		}
+	}, false);
+
+	xhr.addEventListener("progress", function (event) {
+		if (event.lengthComputable) {
+			var percentage = Math.round((event.loaded / event.total) * 100);
+			if (percentage !== progressPercentage) {
+				progressPercentage = percentage;
+				progressHandler(percentage, hostQElm);
+			}
+		}
+	});
+	xhr.send();
+};
+
+qPP._alertDownloadFailure = function () {
+	alert('download failed!');
+};
+
 //Form response processing
 qPP._respToNumber = function (resp) {
 	try {
@@ -802,6 +845,7 @@ qPP._getQuestionSelector = function (q) {
 };
 
 qPP.obtainResp = function (q) {
+	var hostQ = q.questionId ? jq("#" + q.questionId) : jq(document);
 	var qInfo = q.getQuestionInfo();
 	var qType = qPP._getQuestionType(q);
 	var qSelector = qPP._getQuestionSelector(q);
@@ -821,7 +865,7 @@ qPP.obtainResp = function (q) {
 		}
 		break;
 	case qType === "TE" && qSelector !== "FORM":
-		resp = q.getChoiceValue();
+		resp = jq('input:text', hostQ).val();
 		resp = qPP._respToNumber(resp);
 		break;
 	case qType === "TE" && qSelector === "FORM":
@@ -849,8 +893,6 @@ qPP.obtainResp = function (q) {
 	return resp;
 };
 
-
-
 qPP._setVMConstructPrereq = (function () {
 	var prereqs = {
 		pageReady: false
@@ -864,11 +906,13 @@ qPP._setVMConstructPrereq = (function () {
 })();
 
 //add Vue.js components
-qPP.importImageAtlas = function (picLink, jsonLink) {
+qPP.importImageAtlas = function (q, picLink, jsonLink) {
+	qPP.hideButtons();
+	var hostQElm = q.questionId ? jq("#" + q.questionId) : jq(document);
 	qPP.edSnapshotLocker.textureAtlas = {};
-	qPP._setVMConstructPrereq('atlasReady', false);
-	var loadQueue = new createjs.LoadQueue(false);
+	var loadQueue = new createjs.LoadQueue();
 	loadQueue.addEventListener("complete", handlePreloadComplete);
+	loadQueue.addEventListener("progress", handlePreloadProgress);
 	loadQueue.loadFile({
 		id: "atlasImg",
 		src: picLink
@@ -880,98 +924,92 @@ qPP.importImageAtlas = function (picLink, jsonLink) {
 
 	function handlePreloadComplete(evt) {
 		var json = evt.target.getResult('atlasHash');
-		processJson(json);
+		var blobSrc = evt.target.getResult('atlasImg').src;
+		processJson(json, blobSrc);
 	}
 
-	function processJson(json) {
-		qPP.edSnapshotLocker.textureAtlas.url = picLink;
+	function handlePreloadProgress(evt) {
+		qPP._displayDownloadProgressBar(evt.progress * 100, hostQElm);
+	}
+
+	function processJson(json, blobSrc) {
+		hostQElm[0].pbContainer.remove();
+		hostQElm[0].pbContainer = null;
+		qPP.edSnapshotLocker.textureAtlas.url = blobSrc;
 		qPP.edSnapshotLocker.textureAtlas.height = json.meta.size.h;
 		qPP.edSnapshotLocker.textureAtlas.width = json.meta.size.w;
 		qPP.edSnapshotLocker.textureAtlas.frames = ld(json.frames)
 			.mapKeys(function (value, key) {
 				return key.replace(/[.]jp[e]?g|[.]png|[.]bmp$/i, '');
 			}).mapValues('frame').value();
-		qPP._setVMConstructPrereq('atlasReady', true);
+		qPP.showButtons();
 	}
 };
 
-if (!Vue.component('atlasimg')) {
-	Vue.component('atlasimg', {
-		props: ['specs'], //specs looks like this atlasKey|imgWidth
-		data: function () {
-			return {
-				specs: null
-			};
-		},
-		computed: {
-			atlas: function () {
-				return this.$parent.textureAtlas;
-			},
-			name: function () {
-				return this.specs.split('|')[0];
-			},
-			canvasW: function () {
-				return this.specs.split('|')[1];
-			},
-			canvasH: function () {
-				return this.specs.split('|')[2];
-			},
-			frame: function () {
-				return this.atlas.frames[this.name];
-			},
-			scalar: function () {
-				return Math.min(this.canvasW / this.frame.w, this.canvasH / this.frame.h);
-			},
-			width: function () {
-				return this.scalar * this.frame.w + 'px';
-			},
-			height: function () {
-				return this.scalar * this.frame.h + 'px';
-			},
-			bgUrl: function () {
-				return 'url("' + this.atlas.url + '")';
-			},
-			bgSize: function () {
-				return (this.atlas.width * this.scalar) + 'px' + ' ' + (this.atlas.height * this.scalar) + 'px';
-			},
-			bgPosition: function () {
-				return (-this.frame.x * this.scalar) + 'px ' + (-this.frame.y * this.scalar) + 'px';
-			}
-		},
-		template: '<span style="display:block !important; background-repeat:no-repeat"  class="center-block" v-style="width:width,height:height,backgroundImage:bgUrl,backgroundSize:bgSize,backgroundPosition:bgPosition"></span>'
 
+qPP._displayDownloadProgressBar = function (percentage, hostQElm) {
+	console.log('progress: ', percentage);
+	jq('#Buttons').hide();
+	if (!hostQElm[0].pbContainer) {
+		hostQElm[0].pbContainer = jq('<div class="ht-bt">').appendTo(jq('.QuestionText', hostQElm));
+		hostQElm[0].pbContainer.html('<div class="form-group"></div>');
+		jq('.form-group', hostQElm[0].pbContainer)
+			.append('<label>downloading file:</label>')
+			.append('<div class="progress"><div class="progress-bar" style="width: 0%;"></div></div>');
+	} else {
+		jq('.progress-bar', hostQElm[0].pbContainer).css('width', percentage + '%');
+	}
+
+};
+//register Vue customize components and filters
+
+
+if (!Vue.filter('imagify')) {
+	Vue.filter('imagify', function (name, canvasW, canvasH, align) { //name is either hashkey for atlas image or url link for url image
+		var imgType = /^http[s]*:\/\//.test(name) ? 'url' : 'atlas';
+		var alignMap = {
+			l: 'left',
+			r: 'right',
+			c: 'center'
+		};
+		align = align ? align : 'c';
+		var imgObj = {};
+		imgObj.alignment = alignMap[align];
+		imgObj.canvasW = canvasW;
+		imgObj.canvasH = canvasH;
+		if (imgType === 'atlas') {
+			var atlas = this.textureAtlas;
+			var frame = atlas.frames[name];
+			frame.clipId = name + ld.now();
+			imgObj.clipId = frame.clipId;
+			imgObj.imgW = atlas.width;
+			imgObj.imgH = atlas.height;
+			imgObj.url = atlas.url;
+			imgObj.viewBox = [frame.x, frame.y, frame.w, frame.h].join(' ');
+			imgObj.svgDefs = sprintf('<g><clipPath id="%(clipId)s"><rect x="%(x)s" y="%(y)s" width="%(w)s" height="%(h)s"/></clipPath></g>', frame);
+			return sprintf('<span style="display:block; text-align:%(alignment)s;"><svg width="%(canvasW)s" height="%(canvasH)s" viewbox="%(viewBox)s">%(svgDefs)s<image clip-path="url(#%(clipId)s)" width="%(imgW)s" height="%(imgH)s" xlink:href="%(url)s"/></svg></span>', imgObj);
+
+		} else if (imgType === 'url') {
+			imgObj.url = name;
+			return sprintf('<span style="display:block; text-align:%(alignment)s;"><svg width="%(canvasW)s" height="%(canvasH)s"><image width="100%%" height="100%%" xlink:href="%(url)s"/></svg></span>', imgObj);
+		}
 	});
 }
-if (!Vue.component('urlimg')) {
-	Vue.component('urlimg', {
-		props: ['specs'], //specs looks like this atlasKey|imgWidth
-		data: function () {
-			return {
-				specs: null,
-				bgSize: 'contain'
-			};
-		},
-		computed: {
-			bgUrl: function () {
-				return 'url("' + this.specs.split('|')[0] + '")';
-			},
-			canvasW: function () {
-				return this.specs.split('|')[1] + 'px';
-			},
-			canvasH: function () {
-				return this.specs.split('|')[2] + 'px';
-			},
-			alignment: function () {
-				var alignMap = {
-					l: 'left',
-					r: 'right',
-					c: 'center'
-				};
-				return alignMap[this.specs.split('|')[3]]
-			}
-		},
-		template: '<span style="display:block;" v-style="textAlign:alignment"><span style="display:inline-block !important; background-repeat:no-repeat" v-style="width:canvasW,height:canvasH,backgroundImage:bgUrl,backgroundSize:bgSize"></span></span>'
 
+if (!Vue.filter('textify')) {
+	Vue.filter('textify', function (content, canvasH, align) { //width is always 100%
+		var alignMap = {
+			l: 'left',
+			r: 'right',
+			c: 'center'
+		};
+		align = align ? align : 'c';
+		var txtObj = {};
+		txtObj.alignment = alignMap[align];
+		txtObj.content = content;
+		txtObj.canvasH = canvasH + 'px';
+
+		return sprintf('<span style="display:table; margin:auto; width:100%%; height:%(canvasH)s"><span style="display:table-cell; text-align: %(alignment)s; vertical-align: middle">%(content)s</span></span>', txtObj)
 	});
 }
 
